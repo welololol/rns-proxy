@@ -224,7 +224,7 @@ async fn handle_server_session_tcp(
     mux.send(FrameType::ConnectOk, sid, Vec::new());
 
     // Data relay (shared implementation)
-    relay_bidirectional(sid, stream, mux, session_rx).await;
+    relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
     info!("[{}] Closed", sid);
 }
 
@@ -269,6 +269,6 @@ async fn handle_server_session_udp(
     mux.send(FrameType::ConnectOk, sid, Vec::new());
 
     // Data relay (shared implementation)
-    // relay_bidirectional(sid, stream, mux, session_rx).await;
+    relay_bidirectional_udp(sid, stream, mux, session_rx).await;
     info!("[{}] Closed", sid);
 }
