@@ -21,6 +21,7 @@ use tokio::net::{TcpStream, UdpSocket};
 use tokio::sync::mpsc;
 
 use crate::mux::MuxHandle;
+use crate::relay::relay_bidirectional_tcp;
 use crate::{
     create_node, decode_connect_payload, relay_bidirectional, Frame, FrameType, ProxyEvent,
     APP_ASPECT, APP_NAME,
