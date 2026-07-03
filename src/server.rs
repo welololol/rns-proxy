@@ -170,12 +170,12 @@ pub async fn run_server(identity_path: Option<&str>) {
                                 if udp {
                                     
                                     tokio::spawn(async move {
-                                        handle_server_session_tcp(sid, host, port, mux_clone, session_rx)
+                                        handle_server_session_udp(sid, host, port, mux_clone, session_rx)
                                             .await;
                                     });
                                } else {
                                     tokio::spawn(async move {
-                                        handle_server_session_udp(sid, host, port, mux_clone, session_rx)
+                                        handle_server_session_tcp(sid, host, port, mux_clone, session_rx)
                                             .await;
                                     });
                                 }
