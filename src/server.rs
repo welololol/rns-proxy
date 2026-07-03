@@ -17,7 +17,8 @@ use log::{error, info, warn};
 use rns_crypto::identity::Identity;
 use rns_net::storage;
 use rns_net::{Destination, IdentityHash, LinkId};
-use tokio::net::TcpStream;
+use tokio::net::{TcpStream, UdpSocket};
+use tokio::net::Udp;
 use tokio::sync::mpsc;
 
 use crate::mux::MuxHandle;
@@ -163,14 +164,22 @@ pub async fn run_server(identity_path: Option<&str>) {
                     match frame.frame_type {
                         FrameType::Connect => {
                             let sid = frame.session_id;
-                            if let Some((host, port)) = decode_connect_payload(&frame.payload) {
+                            if let Some((host, port,udp)) = decode_connect_payload(&frame.payload) {
                                 info!("[{}] -> {}:{}", sid, host, port);
                                 let session_rx = mux.register_session(sid);
                                 let mux_clone = mux.clone();
-                                tokio::spawn(async move {
-                                    handle_server_session(sid, host, port, mux_clone, session_rx)
-                                        .await;
-                                });
+                                if udp {
+                                    
+                                    tokio::spawn(async move {
+                                        handle_server_session_tcp(sid, host, port, mux_clone, session_rx)
+                                            .await;
+                                    });
+                               } else {
+                                    tokio::spawn(async move {
+                                        handle_server_session_udp(sid, host, port, mux_clone, session_rx)
+                                            .await;
+                                    });
+                                }
                             } else {
                                 warn!("[{}] Invalid CONNECT payload", sid);
                                 mux.send(
@@ -194,7 +203,7 @@ pub async fn run_server(identity_path: Option<&str>) {
 }
 
 /// Handle a single proxied TCP session on the server side.
-async fn handle_server_session(
+async fn handle_server_session_tcp(
     sid: u32,
     host: String,
     port: u16,
@@ -217,5 +226,47 @@ async fn handle_server_session(
 
     // Data relay (shared implementation)
     relay_bidirectional(sid, stream, mux, session_rx).await;
+    info!("[{}] Closed", sid);
+}
+
+/// Handle a single proxied TCP session on the server side.
+async fn handle_server_session_udp(
+    sid: u32,
+    host: String,
+    port: u16,
+    mux: MuxHandle,
+    session_rx: mpsc::UnboundedReceiver<Frame>,
+) {
+    // Attempt UDP "connection"
+
+    // temp 0.0.0.0 address till I figure that you can actually do this
+    // here an empty port number means the OS gets to handle the exact port, we then connnect with our real info
+    let socket = match UdpSocket::bind("0.0.0.0:0").await {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("[{}] Connection failed: {}", sid, e);
+            mux.send(FrameType::ConnectErr, sid, e.to_string().into_bytes());
+            mux.drop_session(sid);
+            return;
+        }
+    };
+
+    
+    let stream = match socket.connect(format!("{}:{}", host, port)).await {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("[{}] Connection failed: {}", sid, e);
+            mux.send(FrameType::ConnectErr, sid, e.to_string().into_bytes());
+            mux.drop_session(sid);
+            return;
+        }
+    };
+
+    info!("successfully made connection?");
+    // Signal success
+    mux.send(FrameType::ConnectOk, sid, Vec::new());
+
+    // Data relay (shared implementation)
+    // relay_bidirectional(sid, stream, mux, session_rx).await;
     info!("[{}] Closed", sid);
 }

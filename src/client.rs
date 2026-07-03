@@ -16,11 +16,14 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
+use clap::Command;
 use fast_socks5::server::Socks5ServerProtocol;
+use fast_socks5::server::states::{CommandRead, Opened};
+use fast_socks5::util::target_addr::TargetAddr;
 use fast_socks5::{ReplyError, Socks5Command};
 use log::{debug, error, info, warn};
 use rns_net::{LinkId, RnsNode};
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{mpsc, Notify};
 
 use crate::mux::MuxHandle;
@@ -256,7 +259,7 @@ async fn handle_socks5_session(
     sid: u32,
     stream: tokio::net::TcpStream,
     mux: MuxHandle,
-    mut session_rx: mpsc::UnboundedReceiver<Frame>,
+    session_rx: mpsc::UnboundedReceiver<Frame>,
 ) {
     // --- SOCKS5 handshake via fast-socks5 ---
     let proto = match Socks5ServerProtocol::accept_no_auth(stream).await {
@@ -276,10 +279,25 @@ async fn handle_socks5_session(
     };
 
     // Only support TCP CONNECT
-    if cmd != Socks5Command::TCPConnect {
-        let _ = proto.reply_error(&ReplyError::CommandNotSupported).await;
-        return;
+
+
+    match cmd {
+        Socks5Command::TCPConnect => handle_tcp_connect(sid,  mux, session_rx, proto, target_addr).await,
+        Socks5Command::UDPAssociate => handle_udp_connect(sid,  mux, session_rx, proto, target_addr).await,
+        Socks5Command::TCPBind => {_ = proto.reply_error(&ReplyError::CommandNotSupported).await;}
+        // I'll be real I don't know what tcp bind is actually for, so it can just be an error
     }
+}
+
+async fn handle_udp_connect(
+    sid: u32,
+    mux: MuxHandle,
+    mut session_rx: mpsc::UnboundedReceiver<Frame>,
+    proto: Socks5ServerProtocol<TcpStream,CommandRead>, 
+
+    target_addr: TargetAddr,
+) {
+    // info!("udp test data: {:?}, {:?}",cmd, target_addr);
 
     // Extract host and port from TargetAddr
     let (host, port) = target_addr.into_string_and_port();
@@ -287,7 +305,76 @@ async fn handle_socks5_session(
     info!("[{}] -> {}:{}", sid, host, port);
 
     // Send CONNECT frame through RNS
-    let connect_payload = encode_connect_payload(&host, port);
+    let connect_payload = encode_connect_payload(&host, port, true);
+    mux.send(FrameType::Connect, sid, connect_payload);
+
+    // Wait for CONN_OK or CONN_ERR with timeout
+    let connect_result = tokio::time::timeout(Duration::from_secs(15), async {
+        while let Some(frame) = session_rx.recv().await {
+            match frame.frame_type {
+                FrameType::ConnectOk => return Ok(()),
+                FrameType::ConnectErr => {
+                    let reason = String::from_utf8_lossy(&frame.payload).to_string();
+                    return Err(reason);
+                }
+                _ => continue,
+            }
+        }
+        Err("channel closed".to_string())
+    })
+    .await;
+
+    // Reply to SOCKS5 client based on RNS connection result
+    let dummy_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
+
+    let stream = match connect_result {
+        Ok(Ok(())) => {
+            // Connection succeeded -- send SOCKS5 success reply
+            match proto.reply_success(dummy_addr).await {
+                Ok(s) => s,
+                Err(e) => {
+                    debug!("[{}] Failed to send SOCKS5 reply: {:?}", sid, e);
+                    mux.send(FrameType::Close, sid, Vec::new());
+                    mux.drop_session(sid);
+                    return;
+                }
+            }
+        }
+        Ok(Err(reason)) => {
+            warn!("[{}] Remote connect failed: {}", sid, reason);
+            let _ = proto.reply_error(&ReplyError::GeneralFailure).await;
+            mux.drop_session(sid);
+            return;
+        }
+        Err(_) => {
+            warn!("[{}] Connect timeout", sid);
+            let _ = proto.reply_error(&ReplyError::TtlExpired).await;
+            mux.drop_session(sid);
+            return;
+        }
+    };
+
+    // Data relay (shared implementation)
+    relay_bidirectional(sid, stream, mux, session_rx).await;
+}
+
+async fn handle_tcp_connect(
+    sid: u32,
+    mux: MuxHandle,
+    mut session_rx: mpsc::UnboundedReceiver<Frame>,
+    proto: Socks5ServerProtocol<TcpStream,CommandRead>, 
+
+    target_addr: TargetAddr,
+) {
+    // info!("udp test data: {:?}, {:?}",cmd, target_addr);
+
+    // Extract host and port from TargetAddr
+    let (host, port) = target_addr.into_string_and_port();
+
+    info!("[{}] -> {}:{}", sid, host, port);
+
+    // Send CONNECT frame through RNS
+    let connect_payload = encode_connect_payload(&host, port,false);
     mux.send(FrameType::Connect, sid, connect_payload);
 
     // Wait for CONN_OK or CONN_ERR with timeout
