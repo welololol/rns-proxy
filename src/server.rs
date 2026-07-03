@@ -164,7 +164,7 @@ pub async fn run_server(identity_path: Option<&str>) {
                         FrameType::Connect => {
                             let sid = frame.session_id;
                             if let Some((host, port,udp)) = decode_connect_payload(&frame.payload) {
-                                info!("[{}] -> {}:{}", sid, host, port);
+                                info!("[{}] -> {}:{} {}", sid, host, port, udp);
                                 let session_rx = mux.register_session(sid);
                                 let mux_clone = mux.clone();
                                 if udp {
