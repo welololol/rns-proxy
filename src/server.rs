@@ -168,7 +168,6 @@ pub async fn run_server(identity_path: Option<&str>) {
                                 let session_rx = mux.register_session(sid);
                                 let mux_clone = mux.clone();
                                 if udp {
-                                    
                                     tokio::spawn(async move {
                                         handle_server_session_udp(sid, host, port, mux_clone, session_rx)
                                             .await;
@@ -269,6 +268,6 @@ async fn handle_server_session_udp(
     mux.send(FrameType::ConnectOk, sid, Vec::new());
 
     // Data relay (shared implementation)
-    relay_bidirectional_udp(sid, socket, mux, session_rx).await;
+    relay_bidirectional_udp(sid, socket, None, mux, session_rx).await;
     info!("[{}] Closed", sid);
 }

@@ -23,7 +23,7 @@ use fast_socks5::util::target_addr::TargetAddr;
 use fast_socks5::{ReplyError, Socks5Command};
 use log::{debug, error, info, warn};
 use rns_net::{LinkId, RnsNode};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::{mpsc, Notify};
 
 use crate::mux::MuxHandle;
@@ -71,6 +71,13 @@ pub async fn run_client(server_hex: &str, listen_addr: &str) {
             return;
         }
     };
+    let listener_udp = match UdpSocket::bind(listen_addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            error!("Failed to bind SOCKS5 listener on {}: {}", listen_addr, e);
+            return;
+        }
+    };
     info!("SOCKS5 ready: {}", listen_addr);
 
     // Notify used to signal the accept loop that the link was lost and reconnected
@@ -91,6 +98,8 @@ pub async fn run_client(server_hex: &str, listen_addr: &str) {
         .await;
     });
 
+
+    let buf = &mut [0u8 ;65536];
     // Accept SOCKS5 connections
     loop {
         tokio::select! {
@@ -102,6 +111,9 @@ pub async fn run_client(server_hex: &str, listen_addr: &str) {
                         continue;
                     }
                 };
+                println!("{:?}", _addr);
+
+                println!("{:?}", mux.is_connected());
 
                 if !mux.is_connected() {
                     warn!("No RNS link, rejecting connection");
@@ -113,14 +125,45 @@ pub async fn run_client(server_hex: &str, listen_addr: &str) {
                 let session_rx = mux.register_session(sid);
                 let mux_clone = mux.clone();
 
+                println!("okay");
+
                 tokio::spawn(async move {
                     handle_socks5_session(sid, stream, mux_clone, session_rx).await;
                 });
             }
+            udp_result = listener_udp.recv_from(buf) => {
+                let (size,address) = match udp_result {
+                    Ok(sa) => sa,
+                    Err(e) => {
+                        warn!("Accept error: {}", e);
+                        continue;
+                    }
+                };
+                println!("size: {:?} address{:?}", size, address);
+
+                let data = &mut buf[0..size];
+                println!("translate {:?}", String::from_utf8_lossy(data));
+                println!("translate {:?}",  data);
+
+                if !mux.is_connected() {
+                    warn!("No RNS link, dropping packet");
+                    continue;
+                }
+
+                // let sid = mux.next_session_id();
+                // let session_rx = mux.register_session(sid);
+                // let mux_clone = mux.clone();
+
+                // tokio::spawn(async move {
+                    // handle_socks5_session(sid, stream, mux_clone, session_rx).await;
+                // });
+                
+            } 
             _ = reconnect_notify.notified() => {
                 // Link was re-established, just continue accepting
                 info!("SOCKS5 ready: {}", listen_addr);
             }
+
         }
     }
 }
@@ -277,8 +320,6 @@ async fn handle_socks5_session(
         }
     };
 
-    // Only support TCP CONNECT
-
 
     match cmd {
         Socks5Command::TCPConnect => handle_tcp_connect(sid,  mux, session_rx, proto, target_addr).await,
@@ -324,7 +365,8 @@ async fn handle_udp_connect(
     .await;
 
     // Reply to SOCKS5 client based on RNS connection result
-    let dummy_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
+    let dummy_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
+    let port = dummy_addr.port();
 
     let stream = match connect_result {
         Ok(Ok(())) => {
@@ -353,8 +395,15 @@ async fn handle_udp_connect(
         }
     };
 
+
+    let udp_stream = UdpSocket::bind("0.0.0.0:0").await.expect("unable to get udp socket");
+    
+
+
+    // read 
+
     // Data relay (shared implementation)
-    relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
+    relay_bidirectional_udp(sid, udp_stream, Some(stream), mux, session_rx).await;
 }
 
 async fn handle_tcp_connect(
