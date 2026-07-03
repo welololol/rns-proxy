@@ -240,10 +240,11 @@ async fn handle_server_session_udp(
 
     // temp 0.0.0.0 address till I figure that you can actually do this
     // here an empty port number means the OS gets to handle the exact port, we then connnect with our real info
+
     let socket = match UdpSocket::bind("0.0.0.0:0").await {
         Ok(s) => s,
         Err(e) => {
-            warn!("[{}] Connection failed: {}", sid, e);
+            warn!("[{}] udp bind failed 1: {}", sid, e);
             mux.send(FrameType::ConnectErr, sid, e.to_string().into_bytes());
             mux.drop_session(sid);
             return;
@@ -254,7 +255,7 @@ async fn handle_server_session_udp(
     let stream = match socket.connect(format!("{}:{}", host, port)).await {
         Ok(s) => s,
         Err(e) => {
-            warn!("[{}] Connection failed: {}", sid, e);
+            warn!("[{}] udp connection failed 2: {}", sid, e);
             mux.send(FrameType::ConnectErr, sid, e.to_string().into_bytes());
             mux.drop_session(sid);
             return;
