@@ -95,7 +95,8 @@ pub async fn relay_bidirectional_udp(
             match socket.recv(&mut buf).await {
                 Ok(0) => break,
                 Ok(n) => {
-                    println!("sending udp to rns data");
+                    println!("sending udp to rns data {:?}", &buf[..n]);
+                    println!("sending rns to udp data {:?}", String::from_utf8_lossy(&buf[..n]));
                     mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
                 }
                 Err(e) => {
@@ -111,7 +112,8 @@ pub async fn relay_bidirectional_udp(
         while let Some(frame) = session_rx.recv().await {
             match frame.frame_type {
                 FrameType::Data => {
-                    println!("sending rns to udp data");
+                    println!("sending rns to udp data {:?}", frame);
+                    println!("sending rns to udp data {:?}", String::from_utf8_lossy(&*frame.payload));
                     if let Err(e) = socket1.send(&frame.payload).await {
                         warn!("[{}] TCP write error: {}", sid, e);
                         break;
