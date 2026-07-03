@@ -253,7 +253,8 @@ async fn handle_server_session_udp(
 
     
     info!("{:?}", format!("{}:{}", host, port));
-    let stream = match socket.connect(format!("{}:{}", host, port)).await {
+    let destination = "dns.google:53";
+    let stream = match socket.connect(destination).await {
         Ok(s) => s,
         Err(e) => {
             warn!("[{}] udp connection failed 2: {}", sid, e);
