@@ -365,13 +365,16 @@ async fn handle_udp_connect(
     .await;
 
     // Reply to SOCKS5 client based on RNS connection result
-    let dummy_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
-    let port = dummy_addr.port();
+
+    let udp_stream = UdpSocket::bind(format!("0.0.0.0:0")).await.expect("unable to get udp socket");
+    let port = udp_stream.local_addr().unwrap().port();
+    let relay_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
+
 
     let stream = match connect_result {
         Ok(Ok(())) => {
             // Connection succeeded -- send SOCKS5 success reply
-            match proto.reply_success(dummy_addr).await {
+            match proto.reply_success(relay_address).await {
                 Ok(s) => s,
                 Err(e) => {
                     debug!("[{}] Failed to send SOCKS5 reply: {:?}", sid, e);
@@ -396,7 +399,6 @@ async fn handle_udp_connect(
     };
 
 
-    let udp_stream = UdpSocket::bind("0.0.0.0:0").await.expect("unable to get udp socket");
     
 
 

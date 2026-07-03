@@ -149,8 +149,7 @@ pub async fn relay_bidirectional_udp(
         }      
         None => {
             tokio::spawn(async move {
-
-                tokio::time::sleep(Duration::from_hours(100000000000)); // lmao // I can't be bothered importing the empty future thing.
+                tokio::time::sleep(Duration::from_hours(100000000000)).await; // lmao // I can't be bothered importing the empty future thing.
             })
         }
     };
