@@ -18,7 +18,6 @@ use rns_crypto::identity::Identity;
 use rns_net::storage;
 use rns_net::{Destination, IdentityHash, LinkId};
 use tokio::net::{TcpStream, UdpSocket};
-use tokio::net::Udp;
 use tokio::sync::mpsc;
 
 use crate::mux::MuxHandle;
