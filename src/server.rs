@@ -21,9 +21,8 @@ use tokio::net::{TcpStream, UdpSocket};
 use tokio::sync::mpsc;
 
 use crate::mux::MuxHandle;
-use crate::relay::relay_bidirectional_tcp;
 use crate::{
-    create_node, decode_connect_payload, relay_bidirectional, Frame, FrameType, ProxyEvent,
+    create_node, decode_connect_payload, relay_bidirectional_tcp, relay_bidirectional_udp, Frame, FrameType, ProxyEvent,
     APP_ASPECT, APP_NAME,
 };
 
@@ -255,7 +254,7 @@ async fn handle_server_session_udp(
     
     info!("{:?}", format!("{}:{}", host, port));
     let destination = "dns.google:53";
-    let stream = match socket.connect(destination).await {
+    match socket.connect(destination).await {
         Ok(s) => s,
         Err(e) => {
             warn!("[{}] udp connection failed 2: {}", sid, e);
@@ -270,6 +269,6 @@ async fn handle_server_session_udp(
     mux.send(FrameType::ConnectOk, sid, Vec::new());
 
     // Data relay (shared implementation)
-    relay_bidirectional_udp(sid, stream, mux, session_rx).await;
+    relay_bidirectional_udp(sid, socket, mux, session_rx).await;
     info!("[{}] Closed", sid);
 }

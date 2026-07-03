@@ -28,8 +28,7 @@ use tokio::sync::{mpsc, Notify};
 
 use crate::mux::MuxHandle;
 use crate::{
-    create_node, encode_connect_payload, ensure_path, recall_sig_pub, relay_bidirectional, Frame,
-    FrameType, ProxyEvent,
+    Frame, FrameType, ProxyEvent, create_node, encode_connect_payload, ensure_path, recall_sig_pub, relay_bidirectional_tcp, relay_bidirectional_udp
 };
 
 /// Run the SOCKS5 client.
@@ -355,7 +354,7 @@ async fn handle_udp_connect(
     };
 
     // Data relay (shared implementation)
-    relay_bidirectional(sid, stream, mux, session_rx).await;
+    relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
 }
 
 async fn handle_tcp_connect(
@@ -424,7 +423,7 @@ async fn handle_tcp_connect(
     };
 
     // Data relay (shared implementation)
-    relay_bidirectional(sid, stream, mux, session_rx).await;
+    relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
 }
 
 /// Wait for a path to the server, then recall the identity and return sig_pub_bytes.
