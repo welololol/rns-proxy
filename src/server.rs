@@ -252,6 +252,7 @@ async fn handle_server_session_udp(
     };
 
     
+    info!("{:?}", format!("{}:{}", host, port));
     let stream = match socket.connect(format!("{}:{}", host, port)).await {
         Ok(s) => s,
         Err(e) => {
