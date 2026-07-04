@@ -95,10 +95,10 @@ pub async fn relay_bidirectional_udp(
     let udp_to_rns = tokio::spawn(async move {
         let mut buf = [0u8; 4096];
         loop {
-            match socket.recv(&mut buf).await {
-                Ok(0) => {println!("end for some reason"); break},
-                Ok(n) => {
-                    println!("sending udp to rns data {:?}", &buf[..n]);
+            match socket.recv_from(&mut buf).await {
+                Ok((0,_)) => {println!("end for some reason"); break},
+                Ok((n,addr)) => {
+                    println!("sending udp to rns data {:?} {:?}", &buf[..n], addr);
                     println!("sending udp to rns data {:?}", String::from_utf8_lossy(&buf[..n]));
                     println!("sid: {:?} ", sid);
                     mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
@@ -113,39 +113,48 @@ pub async fn relay_bidirectional_udp(
 
     // RNS -> UDP
     let rns_to_udp = tokio::spawn(async move {
-        while let Some(frame) = session_rx.recv().await {
-            match frame.frame_type {
-                FrameType::Data => {
-                    match parse_udp_request(&*frame.payload).await {
-                        Ok((frag,addr,data)) => {
-                            println!("sending rns to udp data {:?}:{:?}:{:?}", frag, addr, data);
-                            println!("sending rns to udp data {:?}", String::from_utf8_lossy(data));
-                            println!("sending from: {:?} to {:?}", socket1.local_addr(), addr);
+        loop {
+            if let Some(frame) = session_rx.recv().await {
+                println!("killed");
+                println!("{:?}", frame);
+                match frame.frame_type {
+                    FrameType::Data => {
+                        match parse_udp_request(&*frame.payload).await {
+                            Ok((frag,addr,data)) => {
+                                println!("sending rns to udp data {:?}:{:?}:{:?}", frag, addr, data);
+                                println!("sending rns to udp data {:?}", String::from_utf8_lossy(data));
+                                println!("sending from: {:?} to {:?}", socket1.local_addr(), addr);
 
-                            let target  = addr.into_string_and_port(); // string conversion is the only way to convert
-                            println!("{:?}", target);
-                            // between the tokio and fastsocksv5 versions for some reason
+                                let target  = addr.into_string_and_port(); // string conversion is the only way to convert
+                                println!("{:?}", target);
+                                // between the tokio and fastsocksv5 versions for some reason
                             
-                            if let Err(e) = socket1.send_to(data,target).await {
-                                warn!("[{}] UDP write error: {}", sid, e);
-                                break;
-                            } else {
-                                println!("sent packet")
+                                if let Err(e) = socket1.send_to(data,target).await {
+                                    warn!("[{}] UDP write error: {}", sid, e);
+                                    break;
+                                } else {
+                                    println!("sent packet")
+                                }
                             }
-                        }
-                        Err(e) => {
-                            debug!("[{}] UDP read error: {}", sid, e);
-                            break
+                            Err(e) => {
+                                debug!("[{}] UDP read error: {}", sid, e);
+                                break
 
-                        }
+                            }
                         
-                    };
+                        };
 
+                    }
+                    FrameType::Close => {println!("frame closed {:?}", frame); break},
+                    _ => {}
                 }
-                FrameType::Close => {println!("frame closed {:?}", frame); break},
-                _ => {}
-            }
-        };
+            } else {
+                println!("ended socket stream?");
+                break;
+                
+             };
+            
+        }
         println!("ended");
     });
 
