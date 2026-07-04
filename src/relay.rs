@@ -85,7 +85,7 @@ pub async fn relay_bidirectional_udp(
     tcp_stream: Option<tokio::net::TcpStream>,
     mux: MuxHandle,
     mut session_rx: mpsc::UnboundedReceiver<Frame>,
-    wrap_packets: Option<u16> // on the client side whatever application
+    wrap_packets: bool // on the client side whatever application
     // that is using the socksv5 proxy will add a header for where the udp packet is meant
     // to go, so we don't have to add that in ourselves, however on the server side RNS, when
     // the server receives a packet from a remote destination, it must wrap the udp packet with
@@ -124,7 +124,7 @@ pub async fn relay_bidirectional_udp(
                     println!("sending udp to rns data {:?} {:?}", &buf[..n], addr);
                     println!("sending udp to rns data {:?}", String::from_utf8_lossy(&buf[..n]));
                     println!("sid: {:?} ", sid);
-                    if let Some(_) = wrap_packets {
+                    if wrap_packets {
                         println!("sending packet raw");
                         let mut a =  client_local_port_1.lock().await;
                         *a = Some(addr.port());
@@ -152,7 +152,7 @@ pub async fn relay_bidirectional_udp(
             if let Some(frame) = session_rx.recv().await {
                 println!("killed");
                 println!("{:?}", frame);
-                if let Some(port) = wrap_packets {
+                if wrap_packets {
                     match frame.frame_type {
                         FrameType::Data => {
 

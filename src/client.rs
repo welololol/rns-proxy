@@ -399,7 +399,7 @@ async fn handle_udp_connect(
     };
 
 
-    relay_bidirectional_udp(sid, udp_stream, Some(stream), mux, session_rx,Some(port)).await;
+    relay_bidirectional_udp(sid, udp_stream, Some(stream), mux, session_rx, true).await;
 }
 
 async fn handle_tcp_connect(

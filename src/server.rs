@@ -256,7 +256,7 @@ async fn handle_server_session_udp(
     mux.send(FrameType::ConnectOk, sid, Vec::new());
 
     // Data relay (shared implementation)
-    relay_bidirectional_udp(sid, socket, None, mux, session_rx, None).await;
+    relay_bidirectional_udp(sid, socket, None, mux, session_rx, false).await;
     info!("[{}] UDP Closed", sid);
 }
 
