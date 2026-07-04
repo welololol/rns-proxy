@@ -96,7 +96,7 @@ pub async fn relay_bidirectional_udp(
         let mut buf = [0u8; 4096];
         loop {
             match socket.recv(&mut buf).await {
-                Ok(0) => break,
+                Ok(0) => {println!("end for some reason"); break},
                 Ok(n) => {
                     println!("sending udp to rns data {:?}", &buf[..n]);
                     println!("sending udp to rns data {:?}", String::from_utf8_lossy(&buf[..n]));
@@ -142,7 +142,7 @@ pub async fn relay_bidirectional_udp(
                     };
 
                 }
-                FrameType::Close => break,
+                FrameType::Close => {println!("frame closed {:?}", frame); break},
                 _ => {}
             }
         }
