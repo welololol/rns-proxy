@@ -115,6 +115,7 @@ pub async fn relay_bidirectional_udp(
         loop {
              let stuff = socket.recv_from(&mut buf).await;
              println!("certified stuff {:?}", stuff);
+                client_local_port = Some(addr.port());
              match stuff {
                 Ok((0,_)) => {println!("end for some reason"); break},
                 Ok((n,addr)) => {
@@ -123,7 +124,6 @@ pub async fn relay_bidirectional_udp(
                     println!("sid: {:?} ", sid);
                     if let Some(_) = wrap_packets {
                         println!("sending packet raw");
-                        client_local_port = Some(addr.port());
 
                         mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
                     } else {
