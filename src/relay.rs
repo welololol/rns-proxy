@@ -129,10 +129,14 @@ pub async fn relay_bidirectional_udp(
                             if let Err(e) = socket1.send_to(data,target).await {
                                 warn!("[{}] UDP write error: {}", sid, e);
                                 break;
+                            } else {
+                                println!("sent packet")
                             }
                         }
                         Err(e) => {
-                            
+                            debug!("[{}] UDP read error: {}", sid, e);
+                            break
+
                         }
                         
                     };
@@ -175,9 +179,9 @@ pub async fn relay_bidirectional_udp(
         }
     };
     tokio::select! {
-        _ = udp_to_rns => {},
-        _ = rns_to_udp => {},
-        _ = break_connection_tcp_check => {},
+        _ = udp_to_rns => {println!("udp end")},
+        _ = rns_to_udp => {println!("rns end")},
+        _ = break_connection_tcp_check => {println!("tcp end")},
     }
 
     mux.send(FrameType::Close, sid, Vec::new());

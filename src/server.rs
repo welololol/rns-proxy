@@ -224,7 +224,7 @@ async fn handle_server_session_tcp(
 
     // Data relay (shared implementation)
     relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
-    info!("[{}] Closed", sid);
+    info!("[{}] TCP Closed", sid);
 }
 
 /// Handle a single proxied TCP session on the server side.
@@ -257,6 +257,6 @@ async fn handle_server_session_udp(
 
     // Data relay (shared implementation)
     relay_bidirectional_udp(sid, socket, None, mux, session_rx).await;
-    info!("[{}] Closed", sid);
+    info!("[{}] UDP Closed", sid);
 }
 
