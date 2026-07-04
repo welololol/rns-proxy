@@ -90,6 +90,7 @@ pub async fn relay_bidirectional_udp(
     // to go, so we don't have to add that in ourselves, however on the server side RNS, when
     // the server receives a packet from a remote destination, it must wrap the udp packet with
     // the original location where that packet came from so the client knows of that information.
+    // that's on the UDP -> RNS side, on the other side it's reversed.
 ) {
     let socket = Arc::new(socket);
     let socket1 = socket.clone();
@@ -110,6 +111,9 @@ pub async fn relay_bidirectional_udp(
     //
     // I might just be being stupid but I can't find a better way of figuring this out. and the spec
     // is pretty vague so https://www.rfc-editor.org/info/rfc1928/
+    //
+    // you could probably do better than using a mutex cause it's only updated in one thread
+    // and read in another, but I odn't know enough fancy rust stuff to actually do that.
 
 
     // UDP -> RNS
@@ -155,7 +159,6 @@ pub async fn relay_bidirectional_udp(
                 if wrap_packets {
                     match frame.frame_type {
                         FrameType::Data => {
-
                            let a =  client_local_port_2.lock().await;
                            let value = *a;
 
@@ -171,10 +174,9 @@ pub async fn relay_bidirectional_udp(
                            } else {
                                warn!("UDP received but client side does not know of a port");
                                // break // shouldn't break because this might not be the client's fault
+                               // maybe some random bot send a udp request to that port before the client
+                               // could do anything, so we just leave it open.
                            }  
-
-                    
-                    
                         }
                         FrameType::Close => {println!("frame closed {:?}", frame); break},
                         _ => {}

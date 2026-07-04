@@ -237,10 +237,9 @@ async fn handle_server_session_udp(
 ) {
     // Attempt UDP "connection"
 
-    // temp 0.0.0.0 address till I figure that you can actually do this
-    // here an empty port number means the OS gets to handle the exact port, we then connnect with our real info
-
-    let socket = match UdpSocket::bind("0.0.0.0:0").await {
+    // generally the udp socket will connect to 0.0.0.0:0 to allow to send and receive from
+    // every port. We don't police which sockets are valid here.
+    let socket = match UdpSocket::bind(format!("{}:{}",host,port)).await {
         Ok(s) => s,
         Err(e) => {
             warn!("[{}] udp bind failed 1: {}", sid, e);
