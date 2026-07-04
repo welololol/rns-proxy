@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use fast_socks5::parse_udp_request;
+use fast_socks5::{new_udp_header, parse_udp_request};
 use fast_socks5::util::target_addr::{TargetAddr, ToTargetAddr};
 use log::{debug, warn};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -84,6 +84,11 @@ pub async fn relay_bidirectional_udp(
     tcp_stream: Option<tokio::net::TcpStream>,
     mux: MuxHandle,
     mut session_rx: mpsc::UnboundedReceiver<Frame>,
+    wrap_packets: bool // on the client side whatever application
+    // that is using the socksv5 proxy will add a header for where the udp packet is meant
+    // to go, so we don't have to add that in ourselves, however on the server side RNS, when
+    // the server receives a packet from a remote destination, it must wrap the udp packet with
+    // the original location where that packet came from so the client knows of that information.
 ) {
     let socket = Arc::new(socket);
     let socket1 = socket.clone();
@@ -101,7 +106,15 @@ pub async fn relay_bidirectional_udp(
                     println!("sending udp to rns data {:?} {:?}", &buf[..n], addr);
                     println!("sending udp to rns data {:?}", String::from_utf8_lossy(&buf[..n]));
                     println!("sid: {:?} ", sid);
-                    mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
+                    if wrap_packets {
+                        let mut packet = new_udp_header(addr).expect("cannot wrap udp packet");
+                        packet.extend_from_slice(&buf[..n]);
+                        mux_fwd.send(FrameType::Data, sid, packet.to_vec());
+                    } else {
+                        println!("sending packet raw");
+                        mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
+                        
+                    }
                 }
                 Err(e) => {
                     debug!("[{}] UDP read error: {}", sid, e);

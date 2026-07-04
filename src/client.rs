@@ -399,13 +399,7 @@ async fn handle_udp_connect(
     };
 
 
-    
-
-
-    // read 
-
-    // Data relay (shared implementation)
-    relay_bidirectional_udp(sid, udp_stream, Some(stream), mux, session_rx).await;
+    relay_bidirectional_udp(sid, udp_stream, Some(stream), mux, session_rx,false).await;
 }
 
 async fn handle_tcp_connect(
