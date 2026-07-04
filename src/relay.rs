@@ -110,13 +110,13 @@ pub async fn relay_bidirectional_udp(
                     println!("sending udp to rns data {:?}", String::from_utf8_lossy(&buf[..n]));
                     println!("sid: {:?} ", sid);
                     if let Some(_) = wrap_packets {
+                        println!("sending packet raw");
+                        mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
+                    } else {
                         let mut packet = new_udp_header(addr).expect("cannot wrap udp packet");
                         packet.extend_from_slice(&buf[..n]);
                         println!("sending with stuff {:?}", packet);
                         mux_fwd.send(FrameType::Data, sid, packet.to_vec());
-                    } else {
-                        println!("sending packet raw");
-                        mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
                         
                     }
                 }
