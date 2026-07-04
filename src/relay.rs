@@ -141,6 +141,7 @@ pub async fn relay_bidirectional_udp(
                             // between the tokio and fastsocksv5 versions for some reason
 
                     
+                            println!("port: {:?}", port);
                             if let Err(e) = socket1.send_to(&frame.payload, (Ipv4Addr::LOCALHOST,port)).await {
                                 warn!("[{}] UDP write error: {}", sid, e);
                                 break;
