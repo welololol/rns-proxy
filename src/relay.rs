@@ -99,7 +99,7 @@ pub async fn relay_bidirectional_udp(
                 Ok(0) => break,
                 Ok(n) => {
                     println!("sending udp to rns data {:?}", &buf[..n]);
-                    println!("sending rns to udp data {:?}", String::from_utf8_lossy(&buf[..n]));
+                    println!("sending udp to rns data {:?}", String::from_utf8_lossy(&buf[..n]));
                     println!("sid: {:?} ", sid);
                     mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
                 }
@@ -118,11 +118,12 @@ pub async fn relay_bidirectional_udp(
                 FrameType::Data => {
                     match parse_udp_request(&*frame.payload).await {
                         Ok((frag,addr,data)) => {
-                            println!("sending rns to udp data {:?}:{:?}:{:?}", frame, addr, data);
+                            println!("sending rns to udp data {:?}:{:?}:{:?}", frag, addr, data);
                             println!("sending rns to udp data {:?}", String::from_utf8_lossy(data));
-                            println!("sending from: {:?} to {:?}", socket1.local_addr(), socket1.peer_addr());
+                            println!("sending from: {:?} to {:?}", socket1.local_addr(), addr);
 
                             let target  = addr.into_string_and_port(); // string conversion is the only way to convert
+                            println!("{:?}", target);
                             // between the tokio and fastsocksv5 versions for some reason
                             
                             if let Err(e) = socket1.send_to(data,target).await {
