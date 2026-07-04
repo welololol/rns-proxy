@@ -1,5 +1,6 @@
 //! Bidirectional TCP ↔ RNS relay — used by both client and server sessions.
 
+use std::net::{Ipv4Addr, ToSocketAddrs};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -84,7 +85,7 @@ pub async fn relay_bidirectional_udp(
     tcp_stream: Option<tokio::net::TcpStream>,
     mux: MuxHandle,
     mut session_rx: mpsc::UnboundedReceiver<Frame>,
-    wrap_packets: bool // on the client side whatever application
+    wrap_packets: Option<u16> // on the client side whatever application
     // that is using the socksv5 proxy will add a header for where the udp packet is meant
     // to go, so we don't have to add that in ourselves, however on the server side RNS, when
     // the server receives a packet from a remote destination, it must wrap the udp packet with
@@ -100,13 +101,15 @@ pub async fn relay_bidirectional_udp(
     let udp_to_rns = tokio::spawn(async move {
         let mut buf = [0u8; 4096];
         loop {
-            match socket.recv_from(&mut buf).await {
+             let stuff = socket.recv_from(&mut buf).await;
+             println!("certified stuff {:?}", stuff);
+             match stuff {
                 Ok((0,_)) => {println!("end for some reason"); break},
                 Ok((n,addr)) => {
                     println!("sending udp to rns data {:?} {:?}", &buf[..n], addr);
                     println!("sending udp to rns data {:?}", String::from_utf8_lossy(&buf[..n]));
                     println!("sid: {:?} ", sid);
-                    if wrap_packets {
+                    if let Some(_) = wrap_packets {
                         let mut packet = new_udp_header(addr).expect("cannot wrap udp packet");
                         packet.extend_from_slice(&buf[..n]);
                         println!("sending with stuff {:?}", packet);
@@ -131,36 +134,56 @@ pub async fn relay_bidirectional_udp(
             if let Some(frame) = session_rx.recv().await {
                 println!("killed");
                 println!("{:?}", frame);
-                match frame.frame_type {
-                    FrameType::Data => {
-                        match parse_udp_request(&*frame.payload).await {
-                            Ok((frag,addr,data)) => {
-                                println!("sending rns to udp data {:?}:{:?}:{:?}", frag, addr, data);
-                                println!("sending rns to udp data {:?}", String::from_utf8_lossy(data));
-                                println!("sending from: {:?} to {:?}", socket1.local_addr(), addr);
+                if let Some(port) = wrap_packets {
+                    match frame.frame_type {
+                        FrameType::Data => {
+                            // just send directly to client side socks proxy
+                            // between the tokio and fastsocksv5 versions for some reason
 
-                                let target  = addr.into_string_and_port(); // string conversion is the only way to convert
-                                println!("{:?}", target);
-                                // between the tokio and fastsocksv5 versions for some reason
-                            
-                                if let Err(e) = socket1.send_to(data,target).await {
-                                    warn!("[{}] UDP write error: {}", sid, e);
-                                    break;
-                                } else {
-                                    println!("sent packet")
-                                }
-                            }
-                            Err(e) => {
-                                debug!("[{}] UDP read error: {}", sid, e);
-                                break
-
-                            }
-                        
-                        };
-
+                    
+                            if let Err(e) = socket1.send_to(&frame.payload, (Ipv4Addr::LOCALHOST,port)).await {
+                                warn!("[{}] UDP write error: {}", sid, e);
+                                break;
+                            } else {
+                                println!("sent packet")
+                            };
+                    
+                        }
+                        FrameType::Close => {println!("frame closed {:?}", frame); break},
+                        _ => {}
                     }
-                    FrameType::Close => {println!("frame closed {:?}", frame); break},
-                    _ => {}
+                } else {
+                    match frame.frame_type {
+                        FrameType::Data => {
+                            match parse_udp_request(&*frame.payload).await {
+                                Ok((frag,addr,data)) => {
+                                    println!("sending rns to udp data {:?}:{:?}:{:?}", frag, addr, data);
+                                    println!("sending rns to udp data {:?}", String::from_utf8_lossy(data));
+                                    println!("sending from: {:?} to {:?}", socket1.local_addr(), addr);
+
+                                    let target  = addr.into_string_and_port(); // string conversion is the only way to convert
+                                    println!("{:?}", target);
+                                    // between the tokio and fastsocksv5 versions for some reason
+                            
+                                    if let Err(e) = socket1.send_to(data,target).await {
+                                        warn!("[{}] UDP write error: {}", sid, e);
+                                        break;
+                                    } else {
+                                        println!("sent packet")
+                                    }
+                                }
+                                Err(e) => {
+                                    debug!("[{}] UDP read error: {}", sid, e);
+                                    break
+
+                                }
+                        
+                            };
+
+                        }
+                        FrameType::Close => {println!("frame closed {:?}", frame); break},
+                        _ => {}
+                    }
                 }
             } else {
                 println!("ended socket stream?");
