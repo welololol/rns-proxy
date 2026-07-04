@@ -367,7 +367,7 @@ async fn handle_udp_connect(
     // Reply to SOCKS5 client based on RNS connection result
 
     let udp_stream = UdpSocket::bind(format!("0.0.0.0:0")).await.expect("unable to get udp socket");
-    let port = udp_stream.local_addr().unwrap().port();
+    let relay_port = udp_stream.local_addr().unwrap().port();
     let relay_address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
 
 
