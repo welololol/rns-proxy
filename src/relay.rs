@@ -109,6 +109,7 @@ pub async fn relay_bidirectional_udp(
                     if wrap_packets {
                         let mut packet = new_udp_header(addr).expect("cannot wrap udp packet");
                         packet.extend_from_slice(&buf[..n]);
+                        println!("sending with stuff {:?}", packet);
                         mux_fwd.send(FrameType::Data, sid, packet.to_vec());
                     } else {
                         println!("sending packet raw");
