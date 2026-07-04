@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use fast_socks5::{new_udp_header, parse_udp_request};
 use fast_socks5::util::target_addr::{TargetAddr, ToTargetAddr};
-use log::{debug, warn};
+use log::{debug, error, warn};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::unix::SocketAddr;
 use tokio::sync::mpsc;
@@ -96,6 +96,18 @@ pub async fn relay_bidirectional_udp(
 
     let mux_fwd = mux.clone();
 
+    let mut client_local_port = None; // the socksv5 protocol never sends the port number that the
+    // udp relay server should be expecting from the client, and the port number for the udp
+    // connection may be different that the tcp port. So the only way to get the port that the client
+    // is expecting is to wait until the client has sent data through udp and record that data
+    // this does mean that if the client is only ever receiving data from udp, it will never get
+    // the right port number because the relay will never know which port to send it through.
+    // I reckon that situation is very rare and that most socksv5 clients will account for that
+    // but it's possible this breaks here.
+    //
+    // I might just be being stupid but I can't find a better way of figuring this out. and the spec
+    // is pretty vague so https://www.rfc-editor.org/info/rfc1928/
+
 
     // UDP -> RNS
     let udp_to_rns = tokio::spawn(async move {
@@ -111,6 +123,8 @@ pub async fn relay_bidirectional_udp(
                     println!("sid: {:?} ", sid);
                     if let Some(_) = wrap_packets {
                         println!("sending packet raw");
+                        client_local_port = Some(addr.port());
+
                         mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
                     } else {
                         let mut packet = new_udp_header(addr).expect("cannot wrap udp packet");
@@ -137,17 +151,22 @@ pub async fn relay_bidirectional_udp(
                 if let Some(port) = wrap_packets {
                     match frame.frame_type {
                         FrameType::Data => {
-                            // just send directly to client side socks proxy
-                            // between the tokio and fastsocksv5 versions for some reason
+
+                           if let Some(port) = client_local_port {
+                                println!("port: {:?}", port);
+                                if let Err(e) = socket1.send_to(&frame.payload, (Ipv4Addr::LOCALHOST,port)).await {
+                                    warn!("[{}] UDP write error: {}", sid, e);
+                                    break;
+                                } else {
+                                    println!("sent packet")
+                                };
+                               
+                           } else {
+                               warn!("UDP received but client side does not know of a port");
+                               // break // shouldn't break because this might not be the client's fault
+                           }  
 
                     
-                            println!("port: {:?}", port);
-                            if let Err(e) = socket1.send_to(&frame.payload, (Ipv4Addr::LOCALHOST,port)).await {
-                                warn!("[{}] UDP write error: {}", sid, e);
-                                break;
-                            } else {
-                                println!("sent packet")
-                            };
                     
                         }
                         FrameType::Close => {println!("frame closed {:?}", frame); break},
