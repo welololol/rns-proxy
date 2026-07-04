@@ -145,7 +145,8 @@ pub async fn relay_bidirectional_udp(
                 FrameType::Close => {println!("frame closed {:?}", frame); break},
                 _ => {}
             }
-        }
+        };
+        println!("ended");
     });
 
 
