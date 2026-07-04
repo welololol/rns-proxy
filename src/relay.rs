@@ -9,7 +9,7 @@ use fast_socks5::util::target_addr::{TargetAddr, ToTargetAddr};
 use log::{debug, error, warn};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::unix::SocketAddr;
-use tokio::sync::mpsc;
+use tokio::sync::{Mutex, mpsc};
 
 use crate::frame::{Frame, FrameType};
 use crate::mux::MuxHandle;
@@ -96,7 +96,10 @@ pub async fn relay_bidirectional_udp(
 
     let mux_fwd = mux.clone();
 
-    let mut client_local_port = None; // the socksv5 protocol never sends the port number that the
+    let client_local_port_mutex = Mutex::new(None);
+    let client_local_port_1 = Arc::new(client_local_port_mutex);
+    let client_local_port_2 = client_local_port_1.clone();
+    // the socksv5 protocol never sends the port number that the
     // udp relay server should be expecting from the client, and the port number for the udp
     // connection may be different that the tcp port. So the only way to get the port that the client
     // is expecting is to wait until the client has sent data through udp and record that data
@@ -115,7 +118,6 @@ pub async fn relay_bidirectional_udp(
         loop {
              let stuff = socket.recv_from(&mut buf).await;
              println!("certified stuff {:?}", stuff);
-                client_local_port = Some(addr.port());
              match stuff {
                 Ok((0,_)) => {println!("end for some reason"); break},
                 Ok((n,addr)) => {
@@ -124,6 +126,8 @@ pub async fn relay_bidirectional_udp(
                     println!("sid: {:?} ", sid);
                     if let Some(_) = wrap_packets {
                         println!("sending packet raw");
+                        let mut a =  client_local_port_1.lock().await;
+                        *a = Some(addr.port());
 
                         mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
                     } else {
@@ -152,7 +156,10 @@ pub async fn relay_bidirectional_udp(
                     match frame.frame_type {
                         FrameType::Data => {
 
-                           if let Some(port) = client_local_port {
+                           let a =  client_local_port_2.lock().await;
+                           let value = *a;
+
+                           if let Some(port) = value {
                                 println!("port: {:?}", port);
                                 if let Err(e) = socket1.send_to(&frame.payload, (Ipv4Addr::LOCALHOST,port)).await {
                                     warn!("[{}] UDP write error: {}", sid, e);
