@@ -251,18 +251,6 @@ async fn handle_server_session_udp(
     };
 
     
-    info!("{:?}", format!("{}:{}", host, port));
-    let destination = "dns.google:53";
-    match socket.connect(destination).await {
-        Ok(s) => s,
-        Err(e) => {
-            warn!("[{}] udp connection failed 2: {}", sid, e);
-            mux.send(FrameType::ConnectErr, sid, e.to_string().into_bytes());
-            mux.drop_session(sid);
-            return;
-        }
-    };
-
     info!("successfully made connection?");
     // Signal success
     mux.send(FrameType::ConnectOk, sid, Vec::new());
@@ -271,3 +259,4 @@ async fn handle_server_session_udp(
     relay_bidirectional_udp(sid, socket, None, mux, session_rx).await;
     info!("[{}] Closed", sid);
 }
+

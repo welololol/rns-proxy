@@ -3,8 +3,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use fast_socks5::parse_udp_request;
+use fast_socks5::util::target_addr::{TargetAddr, ToTargetAddr};
 use log::{debug, warn};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::unix::SocketAddr;
 use tokio::sync::mpsc;
 
 use crate::frame::{Frame, FrameType};
@@ -101,7 +104,7 @@ pub async fn relay_bidirectional_udp(
                     mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
                 }
                 Err(e) => {
-                    debug!("[{}] TCP read error: {}", sid, e);
+                    debug!("[{}] UDP read error: {}", sid, e);
                     break;
                 }
             }
@@ -113,13 +116,26 @@ pub async fn relay_bidirectional_udp(
         while let Some(frame) = session_rx.recv().await {
             match frame.frame_type {
                 FrameType::Data => {
-                    println!("sending rns to udp data {:?}", frame);
-                    println!("sending rns to udp data {:?}", String::from_utf8_lossy(&*frame.payload));
-                    println!("sending from: {:?} to {:?}", socket1.local_addr(), socket1.peer_addr());
-                    if let Err(e) = socket1.send(&frame.payload).await {
-                        warn!("[{}] TCP write error: {}", sid, e);
-                        break;
-                    }
+                    match parse_udp_request(&*frame.payload).await {
+                        Ok((frag,addr,data)) => {
+                            println!("sending rns to udp data {:?}:{:?}:{:?}", frame, addr, data);
+                            println!("sending rns to udp data {:?}", String::from_utf8_lossy(data));
+                            println!("sending from: {:?} to {:?}", socket1.local_addr(), socket1.peer_addr());
+
+                            let target  = addr.into_string_and_port(); // string conversion is the only way to convert
+                            // between the tokio and fastsocksv5 versions for some reason
+                            
+                            if let Err(e) = socket1.send_to(data,target).await {
+                                warn!("[{}] UDP write error: {}", sid, e);
+                                break;
+                            }
+                        }
+                        Err(e) => {
+                            
+                        }
+                        
+                    };
+
                 }
                 FrameType::Close => break,
                 _ => {}
