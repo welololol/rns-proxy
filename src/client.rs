@@ -24,6 +24,7 @@ use fast_socks5::{ReplyError, Socks5Command};
 use log::{debug, error, info, warn};
 use rns_net::{LinkId, RnsNode};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{mpsc, Notify};
 
 use crate::mux::MuxHandle;
@@ -31,56 +32,53 @@ use crate::{
     Frame, FrameType, ProxyEvent, create_node, encode_connect_payload, ensure_path, recall_sig_pub, relay_bidirectional_tcp, relay_bidirectional_udp
 };
 
-/// Run the SOCKS5 client.
 pub async fn run_client(server_hex: &str, listen_addr: &str) {
-    let server_dest_hash: [u8; 16] = match hex::decode(server_hex) {
+    if let Some(destination) = decode_hash(server_hex).await {
+        if let Some((mux, node, rx)) = connect_rns(destination).await {
+            let reconnect_notify = reconnect_generator(mux.clone(), node, rx, destination).await;
+            run_sockets_proxy_handling(listen_addr, mux.clone(), reconnect_notify).await;
+        }
+    } 
+}
+
+pub async fn decode_hash(server_hex: &str) -> Option<[u8; 16]> {
+    return match hex::decode(server_hex) {
         Ok(v) if v.len() == 16 => {
             let mut arr = [0u8; 16];
             arr.copy_from_slice(&v);
-            arr
+            Some(arr)
         }
         _ => {
             error!("Invalid server address: must be 32 hex chars (16 bytes)");
-            return;
+            return None
         }
     };
+
+}
+
+pub async fn connect_rns(server_dest: [u8; 16]) -> Option<(MuxHandle, Arc<RnsNode>, UnboundedReceiver<ProxyEvent>)> {
 
     let (node, mut rx) = match create_node() {
         Ok(v) => v,
         Err(e) => {
             error!("{}", e);
-            return;
+            return None;
         }
     };
 
     let mux = MuxHandle::new(Arc::clone(&node));
 
     // Initial path + link establishment
-    info!("Looking for route to {}...", server_hex);
-    let sig_pub_bytes = wait_for_path(&node, &server_dest_hash).await;
+    let sig_pub_bytes = wait_for_path(&node, &server_dest).await;
 
-    if !establish_link(&node, &mux, &server_dest_hash, sig_pub_bytes, &mut rx).await {
-        return;
+    if !establish_link(&node, &mux, &server_dest, sig_pub_bytes, &mut rx).await {
+        return None;
     }
 
-    // Start SOCKS5 listener
-    let listener = match TcpListener::bind(listen_addr).await {
-        Ok(l) => l,
-        Err(e) => {
-            error!("Failed to bind SOCKS5 listener on {}: {}", listen_addr, e);
-            return;
-        }
-    };
-    let listener_udp = match UdpSocket::bind(listen_addr).await {
-        Ok(l) => l,
-        Err(e) => {
-            error!("Failed to bind SOCKS5 listener on {}: {}", listen_addr, e);
-            return;
-        }
-    };
-    info!("SOCKS5 ready: {}", listen_addr);
+    return Some((mux, node, rx));
+}
 
-    // Notify used to signal the accept loop that the link was lost and reconnected
+pub async fn reconnect_generator(mux: MuxHandle, node: Arc<RnsNode>,rx: UnboundedReceiver<ProxyEvent>, server_hash: [u8;16]  ) -> Arc<Notify> {
     let reconnect_notify = Arc::new(Notify::new());
 
     // Spawn event dispatch + reconnection task
@@ -91,12 +89,28 @@ pub async fn run_client(server_hex: &str, listen_addr: &str) {
         dispatch_and_reconnect(
             mux_dispatch,
             node_reconn,
-            server_dest_hash,
+            server_hash,
             rx,
             reconnect_notify_clone,
         )
         .await;
     });
+
+    return reconnect_notify;
+}
+
+
+/// Run the SOCKS5 client.
+pub async fn run_sockets_proxy_handling(listen_addr: &str, mux: MuxHandle, reconnect_notify: Arc<Notify>) {
+
+    // Start SOCKS5 listener
+    let listener = match TcpListener::bind(listen_addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            error!("Failed to bind SOCKS5 listener on {}: {}", listen_addr, e);
+            return;
+        }
+    };
 
 
     let buf = &mut [0u8 ;65536];
@@ -131,34 +145,6 @@ pub async fn run_client(server_hex: &str, listen_addr: &str) {
                     handle_socks5_session(sid, stream, mux_clone, session_rx).await;
                 });
             }
-            udp_result = listener_udp.recv_from(buf) => {
-                let (size,address) = match udp_result {
-                    Ok(sa) => sa,
-                    Err(e) => {
-                        warn!("Accept error: {}", e);
-                        continue;
-                    }
-                };
-                println!("size: {:?} address{:?}", size, address);
-
-                let data = &mut buf[0..size];
-                println!("translate {:?}", String::from_utf8_lossy(data));
-                println!("translate {:?}",  data);
-
-                if !mux.is_connected() {
-                    warn!("No RNS link, dropping packet");
-                    continue;
-                }
-
-                // let sid = mux.next_session_id();
-                // let session_rx = mux.register_session(sid);
-                // let mux_clone = mux.clone();
-
-                // tokio::spawn(async move {
-                    // handle_socks5_session(sid, stream, mux_clone, session_rx).await;
-                // });
-                
-            } 
             _ = reconnect_notify.notified() => {
                 // Link was re-established, just continue accepting
                 info!("SOCKS5 ready: {}", listen_addr);

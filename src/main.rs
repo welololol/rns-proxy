@@ -26,5 +26,8 @@ async fn main() {
         } => {
             rns_proxy::client::run_client(&destination, &listen).await;
         }
+        Commands::Forward { destination, ports  } => {
+            // rns_proxy::server::run_server(identity_file.as_deref()).await;
+        }
     }
 }
