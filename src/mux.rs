@@ -157,6 +157,7 @@ impl MuxHandle {
         loop {
             match Frame::decode(&buf) {
                 Some((frame, consumed)) => {
+                    println!("yea {:?} {:?}", frame, consumed);
                     buf.drain(..consumed);
                     frames.push(frame);
                 }
