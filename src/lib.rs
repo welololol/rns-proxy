@@ -14,6 +14,8 @@ pub mod mux;
 pub mod node;
 pub mod relay;
 pub mod server;
+pub mod forwarding;
+pub mod filter;
 
 // Re-export commonly used items so existing `use crate::*` still works.
 pub use frame::{decode_connect_payload, encode_connect_payload, Frame, FrameType};

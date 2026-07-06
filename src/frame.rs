@@ -119,6 +119,10 @@ impl Frame {
 // CONNECT payload helpers
 // ---------------------------------------------------------------------------
 
+pub fn ad() {
+    
+} 
+
 /// Build a CONNECT frame payload: `[1 byte host_len][host bytes][2 bytes port BE][1 bytes settings]`
 /// currently the byte setting only denotes udp but could be used for more in the future
 /// ignore any other bit other than that most significant.

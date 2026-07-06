@@ -13,11 +13,15 @@
 ///! 
 ///! # examples
 ///! ## example 1, only allow dns requests
-///  All:53:udp Include
+///!  All:53:udp Include
 ///! ## example 2, allow connections only to a local IRC chat 
-///  All:194 Include
+///!  All:194 Include
 ///! ## example 3, generic sockets server that blocks udp, private and localhost except for a localhost web server
-///  All Include
-///  Private Exclude
-///  Localhost Exclude
-///  Localhost:80:tcp
+///!  All Include
+///!  Private Exclude
+///!  Localhost Exclude
+///!  Localhost:80:tcp
+///!
+struct a {
+    
+}

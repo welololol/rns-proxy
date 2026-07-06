@@ -27,6 +27,7 @@ use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{mpsc, Notify};
 
+use crate::forwarding::{ForwardedPort, tcp_tunnel};
 use crate::mux::MuxHandle;
 use crate::{
     Frame, FrameType, ProxyEvent, create_node, encode_connect_payload, ensure_path, recall_sig_pub, relay_bidirectional_tcp, relay_bidirectional_udp
@@ -37,6 +38,26 @@ pub async fn run_client(server_hex: &str, listen_addr: &str) {
         if let Some((mux, node, rx)) = connect_rns(destination).await {
             let reconnect_notify = reconnect_generator(mux.clone(), node, rx, destination).await;
             run_sockets_proxy_handling(listen_addr, mux.clone(), reconnect_notify).await;
+        }
+    } 
+}
+
+pub async fn run_client_forward(server_hex: &str, ports: Vec<ForwardedPort> ) {
+    if let Some(destination) = decode_hash(server_hex).await {
+        if let Some((mux, node, rx)) = connect_rns(destination).await {
+            let reconnect_notify = reconnect_generator(mux.clone(), node, rx, destination).await;
+            println!("destinations");
+
+            for port in ports {
+                if true {
+                    tcp_tunnel(mux.clone(), reconnect_notify.clone(), port).await
+                }
+                
+                if false {
+                    
+                }
+            }
+            // run_sockets_proxy_handling(listen_addr, mux.clone(), reconnect_notify).await;
         }
     } 
 }
@@ -287,7 +308,7 @@ async fn handle_socks5_session(
     sid: u32,
     stream: tokio::net::TcpStream,
     mux: MuxHandle,
-    session_rx: mpsc::UnboundedReceiver<Frame>,
+    mut session_rx: mpsc::UnboundedReceiver<Frame>,
 ) {
     // --- SOCKS5 handshake via fast-socks5 ---
     let proto = match Socks5ServerProtocol::accept_no_auth(stream).await {
@@ -308,7 +329,10 @@ async fn handle_socks5_session(
 
 
     match cmd {
-        Socks5Command::TCPConnect => handle_tcp_connect(sid,  mux, session_rx, proto, target_addr).await,
+        Socks5Command::TCPConnect =>
+        {if let Some(stream) = handle_tcp_connect(sid,  mux.clone(), &mut session_rx, proto, target_addr).await {
+            relay_bidirectional_tcp(sid, stream, mux, session_rx).await
+        }},
         Socks5Command::UDPAssociate => handle_udp_connect(sid,  mux, session_rx, proto, target_addr).await,
         Socks5Command::TCPBind => {_ = proto.reply_error(&ReplyError::CommandNotSupported).await;}
         // I'll be real I don't know what tcp bind is actually for, so it can just be an error
@@ -385,17 +409,17 @@ async fn handle_udp_connect(
     };
 
 
+
     relay_bidirectional_udp(sid, udp_stream, Some(stream), mux, session_rx, true).await;
 }
 
 async fn handle_tcp_connect(
     sid: u32,
     mux: MuxHandle,
-    mut session_rx: mpsc::UnboundedReceiver<Frame>,
+    session_rx: &mut mpsc::UnboundedReceiver<Frame>,
     proto: Socks5ServerProtocol<TcpStream,CommandRead>, 
-
     target_addr: TargetAddr,
-) {
+) -> Option<TcpStream> {
     // info!("udp test data: {:?}, {:?}",cmd, target_addr);
 
     // Extract host and port from TargetAddr
@@ -435,7 +459,7 @@ async fn handle_tcp_connect(
                     debug!("[{}] Failed to send SOCKS5 reply: {}", sid, e);
                     mux.send(FrameType::Close, sid, Vec::new());
                     mux.drop_session(sid);
-                    return;
+                    return None;
                 }
             }
         }
@@ -443,18 +467,19 @@ async fn handle_tcp_connect(
             warn!("[{}] Remote connect failed: {}", sid, reason);
             let _ = proto.reply_error(&ReplyError::GeneralFailure).await;
             mux.drop_session(sid);
-            return;
+            return None;
         }
         Err(_) => {
             warn!("[{}] Connect timeout", sid);
             let _ = proto.reply_error(&ReplyError::TtlExpired).await;
             mux.drop_session(sid);
-            return;
+            return None;
         }
     };
 
     // Data relay (shared implementation)
-    relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
+    // relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
+    return Some(stream)
 }
 
 /// Wait for a path to the server, then recall the identity and return sig_pub_bytes.
