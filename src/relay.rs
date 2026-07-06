@@ -47,6 +47,7 @@ pub async fn relay_bidirectional_tcp(
     // RNS -> TCP
     let rns_to_tcp = tokio::spawn(async move {
         while let Some(frame) = session_rx.recv().await {
+            println!("{:?}", frame.frame_type);
             match frame.frame_type {
                 FrameType::Data => {
                     println!("{:?}", &frame.payload);
