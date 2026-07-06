@@ -67,7 +67,7 @@ pub async fn tcp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: Fo
     loop {
         tokio::select! {
             accept_result = listener.accept() => {
-                let (stream, _addr) = match accept_result {
+                let (stream, addr) = match accept_result {
                     Ok(sa) => sa,
                     Err(e) => {
                         continue;
@@ -81,6 +81,8 @@ pub async fn tcp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: Fo
                 let sid = mux.next_session_id();
                 let session_rx = mux.register_session(sid);
                 let mux_clone = mux.clone();
+
+                println!("{:?} {:?}", sid, addr);
 
                 tokio::spawn(async move {
                     relay_forwarded_tcp(sid, stream, mux_clone, session_rx).await;

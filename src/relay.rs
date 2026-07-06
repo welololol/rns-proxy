@@ -49,6 +49,7 @@ pub async fn relay_bidirectional_tcp(
         while let Some(frame) = session_rx.recv().await {
             match frame.frame_type {
                 FrameType::Data => {
+                    println!("{:?}", &frame.payload);
                     if let Err(e) = tcp_write.write_all(&frame.payload).await {
                         warn!("[{}] TCP write error: {}", sid, e);
                         break;
@@ -284,6 +285,7 @@ pub async fn relay_forwarded_tcp(
             match tcp_read.read(&mut buf).await {
                 Ok(0) => break,
                 Ok(n) => {
+                    println!("{:?} {:?}", sid, &buf[..n]);
                     mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
                 }
                 Err(e) => {
@@ -300,6 +302,7 @@ pub async fn relay_forwarded_tcp(
         while let Some(frame) = session_rx.recv().await {
             match frame.frame_type {
                 FrameType::Data => {
+                    println!("{:?}", &frame.payload);
                     if let Err(e) = tcp_write.write_all(&frame.payload).await {
                         warn!("[{}] TCP write error: {}", sid, e);
                         break;
