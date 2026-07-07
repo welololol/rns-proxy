@@ -33,6 +33,7 @@ const DEFAULT_IDENTITY_FILENAME: &str = "rns_proxy_identity";
 ///
 /// If `override_path` is given, uses it as-is.  Otherwise defaults to
 /// `~/.reticulum/<DEFAULT_IDENTITY_FILENAME>`.
+
 fn identity_file_path(override_path: Option<&str>) -> PathBuf {
     match override_path {
         Some(p) => PathBuf::from(p),
@@ -188,6 +189,7 @@ pub async fn run_server(identity_path: Option<&str>) {
                             }
                         }
                         FrameType::Data | FrameType::Close => {
+                            println!("frame: {:?}",frame);
                             mux.dispatch(frame);
                         }
                         _ => {}
@@ -227,7 +229,7 @@ async fn handle_server_session_tcp(
     info!("[{}] TCP Closed", sid);
 }
 
-/// Handle a single proxied TCP session on the server side.
+/// Handle a single proxied UDP session on the server side.
 async fn handle_server_session_udp(
     sid: u32,
     host: String,
@@ -239,6 +241,8 @@ async fn handle_server_session_udp(
 
     // generally the udp socket will connect to 0.0.0.0:0 to allow to send and receive from
     // every port. We don't police which sockets are valid here.
+
+    println!("{}:{}",host,port);
     let socket = match UdpSocket::bind(format!("{}:{}",host,port)).await {
         Ok(s) => s,
         Err(e) => {

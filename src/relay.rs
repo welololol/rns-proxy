@@ -1,6 +1,7 @@
 //! Bidirectional TCP ↔ RNS relay — used by both client and server sessions.
 
 use std::net::{Ipv4Addr, ToSocketAddrs};
+use std::str::SplitWhitespace;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,6 +11,7 @@ use log::{debug, error, warn};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::unix::SocketAddr;
 use tokio::sync::{Mutex, mpsc};
+use udp_stream::UdpStream;
 
 use crate::frame::{Frame, FrameType};
 use crate::mux::MuxHandle;
@@ -73,15 +75,15 @@ pub async fn relay_bidirectional_tcp(
 
 
 
-// udp must still have an associated tcp connection to detect when the connection is over. 
-// this does not apply to the server (as in rns server) as it detects that the frame is being closed
-// udp doesn't have a connetcion so the server cannot detect that the remote server the client is connecting
-// to is offline per say.
-// 
-// basically, the client can stop the udp connection either by the reticulum link breaking
-// OR the process using the udp connection stops
-// while the server only stops in the first scenario because the server cannot know if the remote
-// server not responding is part of the protocol.
+/// udp must still have an associated tcp connection to detect when the connection is over. 
+/// this does not apply to the server (as in rns server) as it detects that the frame is being closed
+/// udp doesn't have a connetcion so the server cannot detect that the remote server the client is connecting
+/// to is offline per say.
+/// 
+/// basically, the client can stop the udp connection either by the reticulum link breaking
+/// OR the process using the udp connection stops
+/// while the server only stops in the first scenario because the server cannot know if the remote
+/// server not responding is part of the protocol.
 pub async fn relay_bidirectional_udp(
     sid: u32,
     socket: tokio::net::UdpSocket,
@@ -322,7 +324,63 @@ pub async fn relay_forwarded_tcp(
 
     mux.send(FrameType::Close, sid, Vec::new());
     mux.drop_session(sid);
-
-
-
 }
+
+pub async fn relay_forwarded_udp(
+    sid: u32,
+    stream: UdpStream, // stream between local forwarded port and the port
+    // of whatever application is connecting to it.
+    mux: MuxHandle,
+    mut session_rx: mpsc::UnboundedReceiver<Frame>)
+{
+    let mux_fwd = mux.clone();
+
+
+    let (mut udp_read,mut udp_write) = tokio::io::split(stream);
+
+    // TCP -> RNS
+    let tcp_to_rns = tokio::spawn(async move {
+        let mut buf = [0u8; 4096];
+        loop {
+            match udp_read.read(&mut buf).await {
+                Ok(0) => break,
+                Ok(n) => {
+                    println!("{:?} {:?}", sid, &buf[..n]);
+                    mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
+                }
+                Err(e) => {
+                    debug!("[{}] TCP read error: {}", sid, e);
+                    break;
+
+                }
+            }
+        }
+    });
+
+    // RNS -> TCP
+    let rns_to_tcp = tokio::spawn(async move {
+        while let Some(frame) = session_rx.recv().await {
+            match frame.frame_type {
+                FrameType::Data => {
+                    println!("{:?}", &frame.payload);
+                    if let Err(e) = udp_write.write_all(&frame.payload).await {
+                        warn!("[{}] TCP write error: {}", sid, e);
+                        break;
+                    }
+                }
+                FrameType::Close => break,
+                _ => {}
+            }
+        }
+    });
+
+    tokio::select! {
+        _ = tcp_to_rns => {},
+        _ = rns_to_tcp => {},
+    }
+
+    mux.send(FrameType::Close, sid, Vec::new());
+    mux.drop_session(sid);
+}
+
+

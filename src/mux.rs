@@ -141,7 +141,7 @@ impl MuxHandle {
                 debug!("Session {} channel closed", sid);
             }
         } else {
-            debug!("No session {} for frame type {}", sid, ft);
+            warn!("No session {} for frame type {}", sid, ft);
         }
     }
 

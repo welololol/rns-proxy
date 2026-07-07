@@ -4,7 +4,7 @@
 //! Run as either a server (exit node) or client (local SOCKS5 proxy).
 
 use clap::Parser;
-use rns_proxy::{cli::{Cli, Commands}, client::run_client_forward, forwarding::ForwardedPort};
+use rns_proxy::{cli::{Cli, Commands}, client::run_client_forward, forwarding::{ForwardedPort, ForwardedPortType}};
 
 #[tokio::main]
 async fn main() {
@@ -26,10 +26,12 @@ async fn main() {
         } => {
             rns_proxy::client::run_client(&destination, &listen).await;
         }
-        Commands::Forward { destination, ports  } => {
+        Commands::Forward { destination, ports} => {
             run_client_forward(&destination, vec![ForwardedPort{
-                server_port: 7657,
-                client_port: 7657
+                server_port: 44444,
+                client_port: 44444,
+                r#type: ForwardedPortType::Udp
+                
             }]).await;
             // rns_proxy::server::run_server(identity_file.as_deref()).await;
         }
