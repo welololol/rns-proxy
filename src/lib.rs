@@ -20,7 +20,7 @@ pub mod filter;
 // Re-export commonly used items so existing `use crate::*` still works.
 pub use frame::{decode_connect_payload, encode_connect_payload, Frame, FrameType};
 pub use node::{create_node, ProxyEvent};
-pub use relay::{relay_bidirectional_udp,relay_bidirectional_tcp};
+pub use relay::{relay_bidirectional_tcp};
 
 use log::info;
 use rns_net::{DestHash, RnsNode};

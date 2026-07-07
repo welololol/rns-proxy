@@ -13,6 +13,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Mutex, mpsc};
 use udp_stream::UdpStream;
 
+use crate::filter::{FilterConfig, allowed_ip, filter_and_convert};
 use crate::frame::{Frame, FrameType};
 use crate::mux::MuxHandle;
 
@@ -75,28 +76,16 @@ pub async fn relay_bidirectional_tcp(
 
 
 
-/// udp must still have an associated tcp connection to detect when the connection is over. 
-/// this does not apply to the server (as in rns server) as it detects that the frame is being closed
-/// udp doesn't have a connetcion so the server cannot detect that the remote server the client is connecting
-/// to is offline per say.
-/// 
-/// basically, the client can stop the udp connection either by the reticulum link breaking
-/// OR the process using the udp connection stops
-/// while the server only stops in the first scenario because the server cannot know if the remote
-/// server not responding is part of the protocol.
-pub async fn relay_bidirectional_udp(
+/// udp client side must be split off to due a lot of things
+
+pub async fn relay_bidirectional_udp_client_side(
     sid: u32,
     socket: tokio::net::UdpSocket,
-    tcp_stream: Option<tokio::net::TcpStream>,
+    tcp_stream: tokio::net::TcpStream,
     mux: MuxHandle,
     mut session_rx: mpsc::UnboundedReceiver<Frame>,
-    wrap_packets: bool // on the client side whatever application
-    // that is using the socksv5 proxy will add a header for where the udp packet is meant
-    // to go, so we don't have to add that in ourselves, however on the server side RNS, when
-    // the server receives a packet from a remote destination, it must wrap the udp packet with
-    // the original location where that packet came from so the client knows of that information.
-    // that's on the UDP -> RNS side, on the other side it's reversed.
 ) {
+    
     let socket = Arc::new(socket);
     let socket1 = socket.clone();
 
@@ -133,18 +122,120 @@ pub async fn relay_bidirectional_udp(
                     println!("sending udp to rns data {:?} {:?}", &buf[..n], addr);
                     println!("sending udp to rns data {:?}", String::from_utf8_lossy(&buf[..n]));
                     println!("sid: {:?} ", sid);
-                    if wrap_packets {
-                        println!("sending packet raw");
-                        let mut a =  client_local_port_1.lock().await;
-                        *a = Some(addr.port());
+                    let mut a =  client_local_port_1.lock().await; *a = Some(addr.port());
 
-                        mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
-                    } else {
+                    mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
+                }
+                Err(e) => {
+                    debug!("[{}] UDP read error: {}", sid, e);
+                    break;
+                }
+            }
+        }
+    });
+
+    // RNS -> UDP
+    let rns_to_udp = tokio::spawn(async move {
+        loop {
+            if let Some(frame) = session_rx.recv().await {
+                println!("killed");
+                println!("{:?}", frame);
+                match frame.frame_type {
+                    FrameType::Data => {
+                       let a =  client_local_port_2.lock().await;
+                       let value = *a;
+
+                       if let Some(port) = value {
+                            println!("port: {:?}", port);
+                            if let Err(e) = socket1.send_to(&frame.payload, (Ipv4Addr::LOCALHOST,port)).await {
+                                warn!("[{}] UDP write error: {}", sid, e);
+                                break;
+                            } else {
+                                println!("sent packet")
+                            };
+                           
+                       } else {
+                           warn!("UDP received but client side does not know of a port");
+                           // break // shouldn't break because this might not be the client's fault
+                           // maybe some random bot send a udp request to that port before the client
+                           // could do anything, so we just leave it open.
+                       }  
+                    }
+                    FrameType::Close => {println!("frame closed {:?}", frame); break},
+                    _ => {}
+                }
+            } else {
+                println!("ended socket stream?");
+                break;
+                
+             };
+            
+        }
+        println!("ended");
+    });
+
+    let (mut tcp_read, mut _tcp_write) = tcp_stream.into_split();
+    let break_connection_tcp_check = tokio::spawn(async move {
+        let mut buf = [0u8; 4096];
+        loop {
+            match tcp_read.read(&mut buf).await {
+                Ok(0) => {
+                    debug!("tcp connectioned associated with udp died {:?}", sid);
+                    break;
+                },
+                Ok(n) => {
+                    warn!("client still sending tcp through udp port {:?} {:?}", sid, &buf[0..n])
+                }
+                Err(e) => {
+                    debug!("[{}] TCP read error: {}", sid, e);
+                    break;
+                }
+            }
+        }
+    });
+    tokio::select! {
+        _ = udp_to_rns => {println!("udp end")},
+        _ = rns_to_udp => {println!("rns end")},
+        _ = break_connection_tcp_check => {println!("tcp end")},
+    }
+
+    mux.send(FrameType::Close, sid, Vec::new());
+    mux.drop_session(sid);
+}
+pub async fn relay_bidirectional_udp_server_side(
+    sid: u32,
+    socket: tokio::net::UdpSocket,
+    mux: MuxHandle,
+    mut session_rx: mpsc::UnboundedReceiver<Frame>,
+    filter_config: FilterConfig,
+) {
+    let socket = Arc::new(socket);
+    let socket1 = socket.clone();
+
+    let mux_fwd = mux.clone();
+
+    // UDP -> RNS
+    let udp_to_rns = tokio::spawn(async move {
+        let mut buf = [0u8; 4096];
+        loop {
+             let stuff = socket.recv_from(&mut buf).await;
+             println!("certified stuff {:?}", stuff);
+             match stuff {
+                Ok((0,_)) => {println!("end for some reason"); break},
+                Ok((n,addr)) => {
+                    println!("sending udp to rns data {:?} {:?}", &buf[..n], addr);
+                    println!("sending udp to rns data {:?}", String::from_utf8_lossy(&buf[..n]));
+                    println!("sid: {:?} ", sid);
+
+                        // okay i cant be boethered add filter config thing here
+                    if allowed_ip(addr, &filter_config).await {
+                        
                         let mut packet = new_udp_header(addr).expect("cannot wrap udp packet");
                         packet.extend_from_slice(&buf[..n]);
                         println!("sending with stuff {:?}", packet);
                         mux_fwd.send(FrameType::Data, sid, packet.to_vec());
-                        
+                    } else {
+                        warn!("packet came from illegal server location")
                     }
                 }
                 Err(e) => {
@@ -161,63 +252,38 @@ pub async fn relay_bidirectional_udp(
             if let Some(frame) = session_rx.recv().await {
                 println!("killed");
                 println!("{:?}", frame);
-                if wrap_packets {
-                    match frame.frame_type {
-                        FrameType::Data => {
-                           let a =  client_local_port_2.lock().await;
-                           let value = *a;
+                match frame.frame_type {
+                    FrameType::Data => {
+                        match parse_udp_request(&*frame.payload).await {
+                            Ok((frag,addr,data)) => {
+                                println!("sending rns to udp data {:?}:{:?}:{:?}", frag, addr, data);
+                                println!("sending rns to udp data {:?}", String::from_utf8_lossy(data));
+                                println!("sending from: {:?} to {:?}", socket1.local_addr(), addr);
 
-                           if let Some(port) = value {
-                                println!("port: {:?}", port);
-                                if let Err(e) = socket1.send_to(&frame.payload, (Ipv4Addr::LOCALHOST,port)).await {
-                                    warn!("[{}] UDP write error: {}", sid, e);
-                                    break;
-                                } else {
-                                    println!("sent packet")
-                                };
-                               
-                           } else {
-                               warn!("UDP received but client side does not know of a port");
-                               // break // shouldn't break because this might not be the client's fault
-                               // maybe some random bot send a udp request to that port before the client
-                               // could do anything, so we just leave it open.
-                           }  
-                        }
-                        FrameType::Close => {println!("frame closed {:?}", frame); break},
-                        _ => {}
-                    }
-                } else {
-                    match frame.frame_type {
-                        FrameType::Data => {
-                            match parse_udp_request(&*frame.payload).await {
-                                Ok((frag,addr,data)) => {
-                                    println!("sending rns to udp data {:?}:{:?}:{:?}", frag, addr, data);
-                                    println!("sending rns to udp data {:?}", String::from_utf8_lossy(data));
-                                    println!("sending from: {:?} to {:?}", socket1.local_addr(), addr);
-
-                                    let target  = addr.into_string_and_port(); // string conversion is the only way to convert
-                                    println!("{:?}", target);
-                                    // between the tokio and fastsocksv5 versions for some reason
-                            
-                                    if let Err(e) = socket1.send_to(data,target).await {
+                                if let Some(socket) = filter_and_convert(addr.clone(), Some(&filter_config)).await {
+                                    
+                                    if let Err(e) = socket1.send_to(data,socket).await {
                                         warn!("[{}] UDP write error: {}", sid, e);
                                         break;
                                     } else {
                                         println!("sent packet")
                                     }
-                                }
-                                Err(e) => {
-                                    debug!("[{}] UDP read error: {}", sid, e);
-                                    break
-
+                                } else {
+                                    warn!("[{}] client attempted to send to illegal location {}",sid, addr)
                                 }
                         
-                            };
+                            }
+                            Err(e) => {
+                                debug!("[{}] UDP read error: {}", sid, e);
+                                break
 
-                        }
-                        FrameType::Close => {println!("frame closed {:?}", frame); break},
-                        _ => {}
+                            }
+                    
+                        };
+
                     }
+                    FrameType::Close => {println!("frame closed {:?}", frame); break},
+                    _ => {}
                 }
             } else {
                 println!("ended socket stream?");
@@ -230,44 +296,24 @@ pub async fn relay_bidirectional_udp(
     });
 
 
-    let break_connection_tcp_check = match tcp_stream {
-        Some(tcp_stream) =>  {
-            let (mut tcp_read, mut tcp_write) = tcp_stream.into_split();
-
-            tokio::spawn(async move {
-                let mut buf = [0u8; 4096];
-                loop {
-                    match tcp_read.read(&mut buf).await {
-                        Ok(0) => {
-                            debug!("tcp connectioned associated with udp died {:?}", sid);
-                            break;
-                        },
-                        Ok(n) => {
-                            warn!("client still sending tcp through udp port {:?} {:?}", sid, &buf[0..n])
-                        }
-                        Err(e) => {
-                            debug!("[{}] TCP read error: {}", sid, e);
-                            break;
-                        }
-                    }
-                }
-            })
-        }      
-        None => {
-            tokio::spawn(async move {
-                tokio::time::sleep(Duration::from_hours(100000000000)).await; // lmao // I can't be bothered importing the empty future thing.
-            })
-        }
-    };
     tokio::select! {
         _ = udp_to_rns => {println!("udp end")},
         _ = rns_to_udp => {println!("rns end")},
-        _ = break_connection_tcp_check => {println!("tcp end")},
     }
 
     mux.send(FrameType::Close, sid, Vec::new());
     mux.drop_session(sid);
 }
+
+/// udp must still have an associated tcp connection to detect when the connection is over. 
+/// this does not apply to the server (as in rns server) as it detects that the frame is being closed
+/// udp doesn't have a connetcion so the server cannot detect that the remote server the client is connecting
+/// to is offline per say.
+/// 
+/// basically, the client can stop the udp connection either by the reticulum link breaking
+/// OR the process using the udp connection stops
+/// while the server only stops in the first scenario because the server cannot know if the remote
+/// server not responding is part of the protocol.
 
 
 
@@ -362,12 +408,35 @@ pub async fn relay_forwarded_udp(
         }
     });
 
-    // RNS -> TCP
+    // RNS -> UDP
     let rns_to_tcp = tokio::spawn(async move {
         while let Some(frame) = session_rx.recv().await {
             match frame.frame_type {
                 FrameType::Data => {
                     println!("{:?}", &frame.payload);
+                    match parse_udp_request(&*frame.payload).await {
+                        Ok((frag,addr,data)) => {
+                            println!("sending rns to udp data {:?}:{:?}:{:?}", frag, addr, data);
+                            println!("sending rns to udp data {:?}", String::from_utf8_lossy(data));
+
+                            let target  = addr.into_string_and_port(); // string conversion is the only way to convert
+                            println!("{:?}", target);
+                            // between the tokio and fastsocksv5 versions for some reason
+                
+                            if let Err(e) = udp_write.write_all(data).await {
+                                warn!("[{}] UDP write error: {}", sid, e);
+                                break;
+                            } else {
+                                println!("sent packet")
+                            }
+                        }
+                        Err(e) => {
+                            debug!("[{}] UDP read error: {}", sid, e);
+                            break
+
+                        }
+            
+                    };
                     if let Err(e) = udp_write.write_all(&frame.payload).await {
                         warn!("[{}] TCP write error: {}", sid, e);
                         break;

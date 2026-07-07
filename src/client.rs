@@ -22,17 +22,20 @@ use fast_socks5::server::states::{CommandRead, Opened};
 use fast_socks5::util::target_addr::TargetAddr;
 use fast_socks5::{ReplyError, Socks5Command};
 use log::{debug, error, info, warn};
+use rns_net::discovery::filter_and_sort_interfaces;
 use rns_net::{LinkId, RnsNode};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{mpsc, Notify};
 use tokio::time::error::Elapsed;
 
-use crate::forwarding::ForwardedPortType::{self, Tcp};
+use crate::filter::filter_and_convert;
+use crate::forwarding::PortType::{self, Tcp};
 use crate::forwarding::{ForwardedPort, tcp_tunnel, udp_tunnel};
 use crate::mux::MuxHandle;
+use crate::relay::relay_bidirectional_udp_client_side;
 use crate::{
-    Frame, FrameType, ProxyEvent, create_node, encode_connect_payload, ensure_path, recall_sig_pub, relay_bidirectional_tcp, relay_bidirectional_udp
+    Frame, FrameType, ProxyEvent, create_node, encode_connect_payload, ensure_path, recall_sig_pub, relay_bidirectional_tcp 
 };
 
 pub async fn run_client(server_hex: &str, listen_addr: &str) {
@@ -52,14 +55,15 @@ pub async fn run_client_forward(server_hex: &str, ports: Vec<ForwardedPort> ) {
 
             for port in ports {
                 match port.r#type {
-                    ForwardedPortType::Tcp => {
+                    PortType::Tcp => {
                         tcp_tunnel(mux.clone(), reconnect_notify.clone(), port).await
                     },
-                    ForwardedPortType::Udp => {
+                    PortType::Udp => {
                         udp_tunnel(mux.clone(), reconnect_notify.clone(), port).await
                     },
-                    ForwardedPortType::TcpUdp => {
-                        
+                    PortType::TcpUdp => {
+                        tcp_tunnel(mux.clone(), reconnect_notify.clone(), port.clone()).await;
+                        udp_tunnel(mux.clone(), reconnect_notify.clone(), port).await;
                     }
                 }
             }
@@ -343,7 +347,7 @@ async fn handle_socks5_session(
         }},
         Socks5Command::UDPAssociate =>
         {if let Some((udp_stream,stream)) = handle_udp_connect(sid,  mux.clone(), &mut session_rx, proto, target_addr).await {
-            relay_bidirectional_udp(sid, udp_stream, Some(stream), mux, session_rx, true).await;
+            relay_bidirectional_udp_client_side(sid, udp_stream, stream, mux, session_rx).await;
         }},
 
         Socks5Command::TCPBind => {_ = proto.reply_error(&ReplyError::CommandNotSupported).await;}
@@ -352,6 +356,90 @@ async fn handle_socks5_session(
 }
 
     
+
+pub async fn connect_tcp_server_side(
+    sid: u32,
+    mux: MuxHandle,
+    session_rx: &mut mpsc::UnboundedReceiver<Frame>,
+    target_addr: TargetAddr,)
+    -> Option<Result<(),String>>
+{
+     if let Some(socket_addr) = filter_and_convert(target_addr, None).await {
+
+        // Send CONNECT frame through RNS
+        let connect_payload = encode_connect_payload(&format!("{}",socket_addr.ip()), socket_addr.port(),false);
+        mux.send(FrameType::Connect, sid, connect_payload);
+
+        // Wait for CONN_OK or CONN_ERR with timeout
+        tokio::time::timeout(Duration::from_secs(15), async {
+            while let Some(frame) = session_rx.recv().await {
+                match frame.frame_type {
+                    FrameType::ConnectOk => return Ok(()),
+                    FrameType::ConnectErr => {
+                        let reason = String::from_utf8_lossy(&frame.payload).to_string();
+                        return Err(reason);
+                    }
+                    _ => continue,
+                }
+            }
+            Err("channel closed".to_string())
+        })
+        .await.ok()
+         
+     } else {
+         return None;
+     }
+}
+
+async fn handle_tcp_connect(
+    sid: u32,
+    mux: MuxHandle,
+    session_rx: &mut mpsc::UnboundedReceiver<Frame>,
+    proto: Socks5ServerProtocol<TcpStream,CommandRead>, 
+    target_addr: TargetAddr,
+) -> Option<TcpStream> {
+    // info!("udp test data: {:?}, {:?}",cmd, target_addr);
+
+
+
+    let connect_result  = connect_tcp_server_side(sid,mux.clone(), session_rx, target_addr).await;
+    // Reply to SOCKS5 client based on RNS connection result
+    let dummy_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
+
+    let stream = match connect_result {
+        Some(Ok(())) => {
+            // Connection succeeded -- send SOCKS5 success reply
+            match proto.reply_success(dummy_addr).await {
+                Ok(s) => s,
+                Err(e) => {
+                    debug!("[{}] Failed to send SOCKS5 reply: {}", sid, e);
+                    mux.send(FrameType::Close, sid, Vec::new());
+                    mux.drop_session(sid);
+                    return None;
+                }
+            }
+        }
+        Some(Err(reason)) => {
+            warn!("[{}] Remote connect failed: {}", sid, reason);
+            let _ = proto.reply_error(&ReplyError::GeneralFailure).await;
+            mux.drop_session(sid);
+            return None;
+        }
+        None => {
+            warn!("[{}] Connect timeout", sid);
+            let _ = proto.reply_error(&ReplyError::TtlExpired).await;
+            mux.drop_session(sid);
+            return None;
+        }
+    };
+
+    // Data relay (shared implementation)
+    // relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
+    return Some(stream)
+}
+
+
+
 pub async fn udp_bind_connect(
     sid: u32,
     mux: MuxHandle,
@@ -433,88 +521,7 @@ async fn handle_udp_connect(
 
 
 
-}
-
-pub async fn connect_tcp_server_side(
-    sid: u32,
-    mux: MuxHandle,
-    session_rx: &mut mpsc::UnboundedReceiver<Frame>,
-    target_addr: TargetAddr,)
-    -> Result<Result<(),String>,Elapsed>
-{
-    let (host, port) = target_addr.into_string_and_port();
-
-    info!("[{}] -> {}:{}", sid, host, port);
-
-    // Send CONNECT frame through RNS
-    let connect_payload = encode_connect_payload(&host, port,false);
-    mux.send(FrameType::Connect, sid, connect_payload);
-
-    // Wait for CONN_OK or CONN_ERR with timeout
-    tokio::time::timeout(Duration::from_secs(15), async {
-        while let Some(frame) = session_rx.recv().await {
-            match frame.frame_type {
-                FrameType::ConnectOk => return Ok(()),
-                FrameType::ConnectErr => {
-                    let reason = String::from_utf8_lossy(&frame.payload).to_string();
-                    return Err(reason);
-                }
-                _ => continue,
-            }
-        }
-        Err("channel closed".to_string())
-    })
-    .await
-}
-
-async fn handle_tcp_connect(
-    sid: u32,
-    mux: MuxHandle,
-    session_rx: &mut mpsc::UnboundedReceiver<Frame>,
-    proto: Socks5ServerProtocol<TcpStream,CommandRead>, 
-    target_addr: TargetAddr,
-) -> Option<TcpStream> {
-    // info!("udp test data: {:?}, {:?}",cmd, target_addr);
-
-
-
-    let connect_result  = connect_tcp_server_side(sid,mux.clone(), session_rx, target_addr).await;
-    // Reply to SOCKS5 client based on RNS connection result
-    let dummy_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
-
-    let stream = match connect_result {
-        Ok(Ok(())) => {
-            // Connection succeeded -- send SOCKS5 success reply
-            match proto.reply_success(dummy_addr).await {
-                Ok(s) => s,
-                Err(e) => {
-                    debug!("[{}] Failed to send SOCKS5 reply: {}", sid, e);
-                    mux.send(FrameType::Close, sid, Vec::new());
-                    mux.drop_session(sid);
-                    return None;
-                }
-            }
-        }
-        Ok(Err(reason)) => {
-            warn!("[{}] Remote connect failed: {}", sid, reason);
-            let _ = proto.reply_error(&ReplyError::GeneralFailure).await;
-            mux.drop_session(sid);
-            return None;
-        }
-        Err(_) => {
-            warn!("[{}] Connect timeout", sid);
-            let _ = proto.reply_error(&ReplyError::TtlExpired).await;
-            mux.drop_session(sid);
-            return None;
-        }
-    };
-
-    // Data relay (shared implementation)
-    // relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
-    return Some(stream)
-}
-
-/// Wait for a path to the server, then recall the identity and return sig_pub_bytes.
+}/// Wait for a path to the server, then recall the identity and return sig_pub_bytes.
 async fn wait_for_path(node: &RnsNode, dest_hash: &[u8; 16]) -> [u8; 32] {
     ensure_path(node, dest_hash, 30).await;
 

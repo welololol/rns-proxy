@@ -35,7 +35,8 @@ async fn main() {
             eprintln!("Starting RNS SOCKS5 proxy server...");
             eprintln!("Make sure rnsd is running (pip install rns && rnsd)");
             eprintln!();
-            rns_proxy::server::run_server(identity_file.as_deref()).await;
+            eprintln!("someone update this example latter xoxo")
+            // rns_proxy::server::run_server(identity_file.as_deref()).await;
         }
         _ => unreachable!(),
     }

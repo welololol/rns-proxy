@@ -33,9 +33,17 @@ pub enum Commands {
         #[arg(short, long, default_value = "127.0.0.1:1080")]
         listen: String,
     },
-    Forward {
+    Connect  {
         #[arg(short, long)]
         destination: String,
+
+        /// Local SOCKS5 listen address
+        #[arg(short, long)]
+        ports: Vec<String>,
+    },
+    Forward  {
+        #[arg(long, value_name = "PATH")]
+        identity_file: Option<String>,
 
         /// Local SOCKS5 listen address
         #[arg(short, long)]

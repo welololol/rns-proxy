@@ -13,6 +13,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use fast_socks5::util::target_addr::TargetAddr;
 use log::{error, info, warn};
 use rns_crypto::identity::Identity;
 use rns_net::storage;
@@ -20,9 +21,11 @@ use rns_net::{Destination, IdentityHash, LinkId};
 use tokio::net::{TcpStream, UdpSocket};
 use tokio::sync::mpsc;
 
+use crate::filter::{FilterConfig, filter_and_convert};
 use crate::mux::MuxHandle;
+use crate::relay::relay_bidirectional_udp_server_side;
 use crate::{
-    create_node, decode_connect_payload, relay_bidirectional_tcp, relay_bidirectional_udp, Frame, FrameType, ProxyEvent,
+    create_node, decode_connect_payload, relay_bidirectional_tcp,  Frame, FrameType, ProxyEvent,
     APP_ASPECT, APP_NAME,
 };
 
@@ -45,7 +48,7 @@ fn identity_file_path(override_path: Option<&str>) -> PathBuf {
 ///
 /// `identity_path` overrides the default identity file location
 /// (`~/.reticulum/rns_proxy_identity`).
-pub async fn run_server(identity_path: Option<&str>) {
+pub async fn run_server(identity_path: Option<&str>, filter_config: FilterConfig) {
     let id_path = identity_file_path(identity_path);
 
     let identity = if id_path.exists() {
@@ -166,16 +169,18 @@ pub async fn run_server(identity_path: Option<&str>) {
                             let sid = frame.session_id;
                             if let Some((host, port,udp)) = decode_connect_payload(&frame.payload) {
                                 info!("[{}] -> {}:{} {}", sid, host, port, udp);
+                                let addr = TargetAddr::Domain(host, port); 
                                 let session_rx = mux.register_session(sid);
                                 let mux_clone = mux.clone();
+                                let config = filter_config.clone();
                                 if udp {
                                     tokio::spawn(async move {
-                                        handle_server_session_udp(sid, host, port, mux_clone, session_rx)
+                                        handle_server_session_udp(sid, addr , mux_clone, session_rx, config)
                                             .await;
                                     });
                                } else {
                                     tokio::spawn(async move {
-                                        handle_server_session_tcp(sid, host, port, mux_clone, session_rx)
+                                        handle_server_session_tcp(sid, addr, mux_clone, session_rx, config)
                                             .await;
                                     });
                                 }
@@ -205,47 +210,53 @@ pub async fn run_server(identity_path: Option<&str>) {
 /// Handle a single proxied TCP session on the server side.
 async fn handle_server_session_tcp(
     sid: u32,
-    host: String,
-    port: u16,
+    addr: TargetAddr,
     mux: MuxHandle,
     session_rx: mpsc::UnboundedReceiver<Frame>,
+    filter_config: FilterConfig
 ) {
+
+    if let Some(socket) = filter_and_convert(addr.clone(), Some(&filter_config)).await {
+        let stream = match TcpStream::connect(socket).await {
+            Ok(s) => s,
+            Err(e) => {
+                warn!("[{}] Connection failed: {}", sid, e);
+                mux.send(FrameType::ConnectErr, sid, e.to_string().into_bytes());
+                mux.drop_session(sid);
+                return;
+            }
+        };
+
+        // Signal success
+        mux.send(FrameType::ConnectOk, sid, Vec::new());
+
+        // Data relay (shared implementation)
+        relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
+        info!("[{}] TCP Closed", sid);
+    } else {
+        warn!("[{}] invalid ip address: {:?}", sid,  &addr);
+        mux.send(FrameType::ConnectErr, sid, "invalid ip address".to_string().into_bytes());
+        mux.drop_session(sid);
+        return;
+    }
     // Attempt TCP connection
-    let stream = match TcpStream::connect(format!("{}:{}", host, port)).await {
-        Ok(s) => s,
-        Err(e) => {
-            warn!("[{}] Connection failed: {}", sid, e);
-            mux.send(FrameType::ConnectErr, sid, e.to_string().into_bytes());
-            mux.drop_session(sid);
-            return;
-        }
-    };
-
-    // Signal success
-    mux.send(FrameType::ConnectOk, sid, Vec::new());
-
-    // Data relay (shared implementation)
-    relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
-    info!("[{}] TCP Closed", sid);
 }
 
 /// Handle a single proxied UDP session on the server side.
 async fn handle_server_session_udp(
     sid: u32,
-    host: String,
-    port: u16,
+    target_addr: TargetAddr,
     mux: MuxHandle,
     session_rx: mpsc::UnboundedReceiver<Frame>,
+    filter_config: FilterConfig
 ) {
     // Attempt UDP "connection"
 
-    // generally the udp socket will connect to 0.0.0.0:0 to allow to send and receive from
-    // every port. We don't police which sockets are valid here.
+    // we ignore whatever the client sent us and just connect to 0.0.0.0:0
+    // we do the actual filtering in relay_bidirectional_udp 
 
-    // warn!("ignoring what the client wanted to connect as and just")
-    println!("{}:{}",host,port);
-    // let socket = match UdpSocket::bind(format!("{}:{}",host,port)).await {
-    let socket = match UdpSocket::bind("127.0.0.1:0").await {
+    let socket = match UdpSocket::bind("0.0.0.0:0").await {
+    // let socket = match UdpSocket::bind("127.0.0.1:0").await {
         Ok(s) => s,
         Err(e) => {
             warn!("[{}] udp bind failed 1: {}", sid, e);
@@ -261,7 +272,7 @@ async fn handle_server_session_udp(
     mux.send(FrameType::ConnectOk, sid, Vec::new());
 
     // Data relay (shared implementation)
-    relay_bidirectional_udp(sid, socket, None, mux, session_rx, false).await;
+    relay_bidirectional_udp_server_side(sid, socket, mux, session_rx, filter_config).await;
     info!("[{}] UDP Closed", sid);
 }
 
