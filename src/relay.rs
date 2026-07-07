@@ -1,6 +1,7 @@
 //! Bidirectional TCP ↔ RNS relay — used by both client and server sessions.
 
 use std::net::{Ipv4Addr, ToSocketAddrs};
+use std::os::unix::net::SocketAddr;
 use std::str::SplitWhitespace;
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,7 +10,6 @@ use fast_socks5::{new_udp_header, parse_udp_request};
 use fast_socks5::util::target_addr::{TargetAddr, ToTargetAddr};
 use log::{debug, error, warn};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::unix::SocketAddr;
 use tokio::sync::{Mutex, mpsc};
 use udp_stream::UdpStream;
 
@@ -331,14 +331,16 @@ pub async fn relay_forwarded_udp(
     stream: UdpStream, // stream between local forwarded port and the port
     // of whatever application is connecting to it.
     mux: MuxHandle,
-    mut session_rx: mpsc::UnboundedReceiver<Frame>)
+    mut session_rx: mpsc::UnboundedReceiver<Frame>,
+    server_port: u16)
 {
     let mux_fwd = mux.clone();
 
+    let localhost_server_addr = (Ipv4Addr::LOCALHOST, server_port).to_target_addr().unwrap();
 
     let (mut udp_read,mut udp_write) = tokio::io::split(stream);
 
-    // TCP -> RNS
+    // UDP -> RNS
     let tcp_to_rns = tokio::spawn(async move {
         let mut buf = [0u8; 4096];
         loop {
@@ -346,7 +348,10 @@ pub async fn relay_forwarded_udp(
                 Ok(0) => break,
                 Ok(n) => {
                     println!("{:?} {:?}", sid, &buf[..n]);
-                    mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
+                    let mut packet = new_udp_header(localhost_server_addr.clone() ).expect("cannot wrap udp packet");
+                    packet.extend_from_slice(&buf[..n]);
+                    println!("sending with stuff {:?}", packet);
+                    mux_fwd.send(FrameType::Data, sid, packet.to_vec());
                 }
                 Err(e) => {
                     debug!("[{}] TCP read error: {}", sid, e);

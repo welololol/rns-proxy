@@ -77,7 +77,7 @@ pub async fn udp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: Fo
 
                 tokio::spawn(async move {
                     if let Ok(_) = udp_bind_connect(sid,  mux.clone(), &mut session_rx, target_addr ).await {
-                        relay_forwarded_udp(sid, stream, mux_clone, session_rx).await;
+                        relay_forwarded_udp(sid, stream, mux_clone, session_rx, port.server_port).await;
                     }
                 });
             }

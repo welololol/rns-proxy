@@ -242,8 +242,10 @@ async fn handle_server_session_udp(
     // generally the udp socket will connect to 0.0.0.0:0 to allow to send and receive from
     // every port. We don't police which sockets are valid here.
 
+    // warn!("ignoring what the client wanted to connect as and just")
     println!("{}:{}",host,port);
-    let socket = match UdpSocket::bind(format!("{}:{}",host,port)).await {
+    // let socket = match UdpSocket::bind(format!("{}:{}",host,port)).await {
+    let socket = match UdpSocket::bind("127.0.0.1:0").await {
         Ok(s) => s,
         Err(e) => {
             warn!("[{}] udp bind failed 1: {}", sid, e);
