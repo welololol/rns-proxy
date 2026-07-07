@@ -20,4 +20,5 @@ hex = "0.4"
 rns-net = "0.5"
 rns-core = "0.1"
 rns-crypto = "0.1"
+udp-stream = "0.0.12"
 

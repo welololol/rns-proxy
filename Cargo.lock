@@ -742,6 +742,7 @@ dependencies = [
  "rns-crypto",
  "rns-net",
  "tokio",
+ "udp-stream",
 ]
 
 [[package]]
@@ -944,6 +945,17 @@ name = "typenum"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
+
+[[package]]
+name = "udp-stream"
+version = "0.0.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf021324a3dc10f5b46ab1c1cf5635e6a81b5559971967b806674673a5f2a18e"
+dependencies = [
+ "bytes",
+ "log",
+ "tokio",
+]
 
 [[package]]
 name = "unicode-ident"
