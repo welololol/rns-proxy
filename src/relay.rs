@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use fast_socks5::{new_udp_header, parse_udp_request};
 use fast_socks5::util::target_addr::{TargetAddr, ToTargetAddr};
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Mutex, mpsc};
 use udp_stream::UdpStream;
