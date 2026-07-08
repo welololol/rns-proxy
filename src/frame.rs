@@ -90,7 +90,7 @@ impl Frame {
     /// Encode a frame into bytes (wire format).
     pub fn encode(&self) -> Vec<u8> {
         let len = self.payload.len() as u16;
-        info!("len: {}", self.payload.len());
+        // info!("len: {}", self.payload.len());
         let mut buf = Vec::with_capacity(HDR_SIZE + self.payload.len());
         buf.push(self.frame_type as u8);
         buf.extend_from_slice(&self.session_id.to_be_bytes());
@@ -139,7 +139,7 @@ pub fn ad() {
 
 /// Build a CONNECT frame payload: `[1 byte host_len][host bytes][2 bytes port BE][1 bytes settings]`
 /// currently the byte setting only denotes udp but could be used for more in the future
-/// ignore any other bit other than that most significant.
+// ignore any other bit other than that most significant.
 pub fn encode_connect_payload(host: &str, port: u16, udp: bool) -> Vec<u8> {
     let h = host.as_bytes();
     let mut buf = Vec::with_capacity(1 + h.len() + 2);

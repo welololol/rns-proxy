@@ -128,7 +128,7 @@ impl MuxHandle {
         // Send in LINK_MDU-sized chunks
 
         for chunk in encoded.chunks(LINK_MDU) {
-            println!("chunk: {:?} sid: {}",chunk, frame.session_id);
+            // println!("chunk: {:?} sid: {}",chunk, frame.session_id);
             if let Err(e) = node.send_on_link(link_id.0, chunk.to_vec(), DATA_CONTEXT) {
                 warn!("Failed to send link data: {:?}", e);
                 return;
@@ -139,7 +139,7 @@ impl MuxHandle {
 
     /// Convenience: send a typed frame.
     pub fn send(&self, frame_type: FrameType, session_id: u32, payload: Vec<u8>) {
-        info!("send frame");
+        // info!("send frame");
         self.send_frame(&Frame::new(frame_type, session_id, payload));
     }
 
@@ -164,7 +164,7 @@ impl MuxHandle {
     pub fn receive_data(&self, data: &[u8]) -> Vec<Frame> {
         let mut buf = self.inner.recv_buf.lock().unwrap();
         buf.extend_from_slice(data);
-        info!("buf: {:?}", buf);
+        // info!("buf: {:?}", buf);
 
         let mut frames = Vec::new();
         loop {
