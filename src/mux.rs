@@ -24,7 +24,7 @@ use rns_core::msgpack::Error;
 use rns_net::{LinkId, LocalServerFactory, RnsNode};
 use tokio::sync::mpsc;
 
-use crate::frame::FrameDecodeState::{DecodingFailed, Finished, MoreDataRequired};
+use crate::frame::FrameDecodeState::{DecodingFailed,  MoreDataRequired};
 use crate::{Frame, FrameType};
 
 /// Context byte for our link data. We use CONTEXT_NONE (0x00) which routes
@@ -164,24 +164,24 @@ impl MuxHandle {
     pub fn receive_data(&self, data: &[u8]) -> Vec<Frame> {
         let mut buf = self.inner.recv_buf.lock().unwrap();
         buf.extend_from_slice(data);
-            info!("buf: {:?}", buf);
+        info!("buf: {:?}", buf);
 
         let mut frames = Vec::new();
         loop {
             match Frame::decode(&buf) {
                 Ok((frame, consumed)) => {
-                    info!("consume {}",consumed);
+                    // info!("consume {}",consumed);
                     buf.drain(..consumed);
                     frames.push(frame);
                 }
                 Err(err) => {
                     match err {
-                        Finished => {
-                            // finished decoding all packets basically
-                            // though there might still be like 5 bytes left in the buffer
-                            info!("finished");
-                            break;
-                        }
+                        // Finished => {
+                        //     // finished decoding all packets basically
+                        //     // though there might still be like 5 bytes left in the buffer
+                        //     info!("finished");
+                        //     break;
+                        // }
                         MoreDataRequired => {
                             info!("more data required");
                             break;
@@ -192,6 +192,7 @@ impl MuxHandle {
                             // work out.
                             error!("decoding failed for a packet, something really bad is happening {:?}",buf);
                             error!("ignoring packet buffer and hoping that will fix it");
+                            assert!(false);
                             buf.drain(..);
                             break;
                         }
@@ -200,11 +201,11 @@ impl MuxHandle {
             }
         }
 
-        info!("frames {:?}", &frames);
-        if buf.len() > 9000 {
-            warn!("buf thing: {:?}", &buf);
-            assert!(false);
-        }
+        // // info!("frames {:?}", &frames);
+        // if buf.len() > 12000 {
+        //     warn!("buf thing: {:?}", &buf);
+        //     // assert!(false);
+        // }
         frames
     }
 }

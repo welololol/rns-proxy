@@ -12,7 +12,7 @@ use std::fmt;
 use clap::error::ErrorFormatter;
 use log::{error, info, warn};
 
-use crate::frame::FrameDecodeState::{DecodingFailed, Finished, MoreDataRequired};
+use crate::frame::FrameDecodeState::{DecodingFailed,  MoreDataRequired};
 
 // ---------------------------------------------------------------------------
 // Frame types and constants
@@ -76,7 +76,6 @@ pub struct Frame {
 pub enum FrameDecodeState {
     MoreDataRequired,
     DecodingFailed,
-    Finished,
 }
 
 impl Frame {
@@ -91,6 +90,7 @@ impl Frame {
     /// Encode a frame into bytes (wire format).
     pub fn encode(&self) -> Vec<u8> {
         let len = self.payload.len() as u16;
+        info!("len: {}", self.payload.len());
         let mut buf = Vec::with_capacity(HDR_SIZE + self.payload.len());
         buf.push(self.frame_type as u8);
         buf.extend_from_slice(&self.session_id.to_be_bytes());
@@ -103,14 +103,14 @@ impl Frame {
     /// Returns `None` if the buffer is too small or the type is unknown.
     pub fn decode(buf: &[u8]) -> Result<(Self, usize), FrameDecodeState> {
         if buf.len() < HDR_SIZE {
-            error!("Buf undersized? somehow, probably a bug, packet has been ignored");
-            return Err(Finished);
+            // means we completely
+            return Err(MoreDataRequired);
         }
         let frame_type = FrameType::from_u8(buf[0]).ok_or(DecodingFailed)?;
         let session_id = u32::from_be_bytes([buf[1], buf[2], buf[3], buf[4]]);
         let payload_len = u16::from_be_bytes([buf[5], buf[6]]) as usize;
         let total = HDR_SIZE + payload_len;
-        info!("info2: {} {} {} {} {}", frame_type, session_id, payload_len, total, buf.len());
+        // info!("info2: {} {} {} {} {}", frame_type, session_id, payload_len, total, buf.len());
         if buf.len() < total {
             return Err(MoreDataRequired);
         } else if buf.len() < total {
