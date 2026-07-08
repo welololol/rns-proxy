@@ -212,7 +212,11 @@ pub async fn relay_bidirectional_udp_server_side(
     let socket = Arc::new(socket);
     let socket1 = socket.clone();
 
+    let config1 = Arc::new(filter_config); // someone please figure out a better way of doing this
+    let config2 = config1.clone();
+
     let mux_fwd = mux.clone();
+    
 
     // UDP -> RNS
     let udp_to_rns = tokio::spawn(async move {
@@ -228,7 +232,7 @@ pub async fn relay_bidirectional_udp_server_side(
                     println!("sid: {:?} ", sid);
 
                         // okay i cant be boethered add filter config thing here
-                    if allowed_ip(addr, &filter_config).await {
+                    if allowed_ip(addr, &config1).await {
                         
                         let mut packet = new_udp_header(addr).expect("cannot wrap udp packet");
                         packet.extend_from_slice(&buf[..n]);
@@ -260,7 +264,7 @@ pub async fn relay_bidirectional_udp_server_side(
                                 println!("sending rns to udp data {:?}", String::from_utf8_lossy(data));
                                 println!("sending from: {:?} to {:?}", socket1.local_addr(), addr);
 
-                                if let Some(socket) = filter_and_convert(addr.clone(), Some(&filter_config)).await {
+                                if let Some(socket) = filter_and_convert(addr.clone(), Some(&config2)).await {
                                     
                                     if let Err(e) = socket1.send_to(data,socket).await {
                                         warn!("[{}] UDP write error: {}", sid, e);
