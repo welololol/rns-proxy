@@ -37,7 +37,7 @@ pub async fn relay_bidirectional_tcp(
 
     // TCP -> RNS
     let tcp_to_rns = tokio::spawn(async move {
-        let mut buf = [0u8; 4096];
+        let mut buf = [0u8; 65535];
         loop {
             match tcp_read.read(&mut buf).await {
                 Ok(0) => break,
