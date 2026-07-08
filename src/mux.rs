@@ -183,7 +183,7 @@ impl MuxHandle {
                         //     break;
                         // }
                         MoreDataRequired => {
-                            info!("more data required");
+                            // info!("more data required");
                             break;
                            // just wait for next packet 
                         }
