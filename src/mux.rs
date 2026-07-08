@@ -112,8 +112,9 @@ impl MuxHandle {
     /// Note that we are using .inner.link_id.lock as the guard to prevent
     /// multiple different sids from sending at the same time and scrambling packets
     pub fn send_frame(&self, frame: &Frame) {
-        let lock = self.inner.link_id.lock();
-        let link_id = match *lock.unwrap() {
+        let lock = self.inner.link_id.lock().unwrap();
+        let value = &*(lock);
+        let link_id = match value {
             Some(id) => id,
             None => {
                 debug!("send_frame: no active link, dropping frame");
@@ -125,12 +126,15 @@ impl MuxHandle {
         let node = &self.inner.node;
 
         // Send in LINK_MDU-sized chunks
+
         for chunk in encoded.chunks(LINK_MDU) {
+            println!("chunk: {:?} sid: {}",chunk, frame.session_id);
             if let Err(e) = node.send_on_link(link_id.0, chunk.to_vec(), DATA_CONTEXT) {
                 warn!("Failed to send link data: {:?}", e);
                 return;
             }
         }
+        drop(lock);
     }
 
     /// Convenience: send a typed frame.
@@ -158,14 +162,15 @@ impl MuxHandle {
     /// Called when `on_link_data` fires. The data may be a partial chunk of a
     /// larger frame, so we buffer and try to decode complete frames.
     pub fn receive_data(&self, data: &[u8]) -> Vec<Frame> {
-        info!("buf: {:?}", data);
         let mut buf = self.inner.recv_buf.lock().unwrap();
         buf.extend_from_slice(data);
+            info!("buf: {:?}", buf);
 
         let mut frames = Vec::new();
         loop {
             match Frame::decode(&buf) {
                 Ok((frame, consumed)) => {
+                    info!("consume {}",consumed);
                     buf.drain(..consumed);
                     frames.push(frame);
                 }
@@ -174,9 +179,11 @@ impl MuxHandle {
                         Finished => {
                             // finished decoding all packets basically
                             // though there might still be like 5 bytes left in the buffer
+                            info!("finished");
                             break;
                         }
                         MoreDataRequired => {
+                            info!("more data required");
                             break;
                            // just wait for next packet 
                         }
