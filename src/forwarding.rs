@@ -114,6 +114,7 @@ pub async fn udp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: Fo
         }
     };
 
+                    info!("d");
 
     let reference = &mux;
 
@@ -123,23 +124,32 @@ pub async fn udp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: Fo
                 let (stream, addr) = match accept_result {
                     Ok(sa) => sa,
                     Err(e) => {
+                        info!("hi");
                         continue;
                     }
                 };
+                    info!("5");
                 let mux = reference.clone();
+                info!("1");
                 if !mux.is_connected().await {
                     drop(stream);
                     continue;
                 }
+                info!("2");
 
                 let sid = mux.next_session_id().await;
+                info!("2");
                 let mut session_rx = mux.register_session(sid).await;
+                info!("2");
                 let mux_clone = mux.clone();
+                info!("2");
 
+                info!("2");
                 // let connect_result = udp_bind_connect(sid,mux.clone(), &mut session_rx, target_addr).await;
 
                 let target_addr = TargetAddr::Ip(SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), port.server_port ));
 
+                info!("3");
                 tokio::spawn(async move {
                     if let Ok(_) = udp_bind_connect(sid,  mux.clone(), &mut session_rx, target_addr ).await {
                         relay_forwarded_udp(sid, stream, mux_clone, session_rx, port.server_port).await;

@@ -144,7 +144,7 @@ pub async fn run_server(identity_path: Option<&str>, filter_config: FilterConfig
                 );
 
                 let mux = MuxHandle::new(Arc::clone(&node));
-                mux.set_link_id(link_id);
+                mux.set_link_id(link_id).await;
 
                 link_muxes.lock().unwrap().insert(link_id, mux);
             }
@@ -190,12 +190,12 @@ pub async fn run_server(identity_path: Option<&str>, filter_config: FilterConfig
                                     FrameType::ConnectErr,
                                     sid,
                                     b"invalid payload".to_vec(),
-                                );
+                                ).await;
                             }
                         }
                         FrameType::Data | FrameType::Close => {
                             // info!("{:?}", frame);
-                            mux.dispatch(frame);
+                            mux.dispatch(frame).await;
                         }
                         _ => {}
                     }
@@ -223,15 +223,15 @@ async fn handle_server_session_tcp(
             Ok(s) => s,
             Err(e) => {
                 warn!("[{}] Connection failed: {}", sid, e);
-                mux.send(FrameType::ConnectErr, sid, e.to_string().into_bytes());
-                mux.drop_session(sid);
+                mux.send(FrameType::ConnectErr, sid, e.to_string().into_bytes()).await;
+                mux.drop_session(sid).await;
                 return;
             }
         };
         info!("{} how it went {:?}", sid ,stream);
 
         // Signal success
-        mux.send(FrameType::ConnectOk, sid, Vec::new());
+        mux.send(FrameType::ConnectOk, sid, Vec::new()).await;
 
         // Data relay (shared implementation)
         info!("{} streaming", sid);
@@ -239,8 +239,8 @@ async fn handle_server_session_tcp(
         info!("[{}] TCP Closed", sid);
     } else {
         warn!("[{}] invalid ip address: {:?}", sid,  &addr);
-        mux.send(FrameType::ConnectErr, sid, "invalid ip address".to_string().into_bytes());
-        mux.drop_session(sid);
+        mux.send(FrameType::ConnectErr, sid, "invalid ip address".to_string().into_bytes()).await;
+        mux.drop_session(sid).await;
         return;
     }
     // Attempt TCP connection
@@ -264,8 +264,8 @@ async fn handle_server_session_udp(
         Ok(s) => s,
         Err(e) => {
             warn!("[{}] udp bind failed 1: {}", sid, e);
-            mux.send(FrameType::ConnectErr, sid, e.to_string().into_bytes());
-            mux.drop_session(sid);
+            mux.send(FrameType::ConnectErr, sid, e.to_string().into_bytes()).await;
+            mux.drop_session(sid).await;
             return;
         }
     };
@@ -273,7 +273,7 @@ async fn handle_server_session_udp(
     
     info!("successfully made connection?");
     // Signal success
-    mux.send(FrameType::ConnectOk, sid, Vec::new());
+    mux.send(FrameType::ConnectOk, sid, Vec::new()).await;
 
     // Data relay (shared implementation)
     relay_bidirectional_udp_server_side(sid, socket, mux, session_rx, filter_config).await;

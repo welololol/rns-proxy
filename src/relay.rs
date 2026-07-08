@@ -42,7 +42,7 @@ pub async fn relay_bidirectional_tcp(
             match tcp_read.read(&mut buf).await {
                 Ok(0) => break,
                 Ok(n) => {
-                    mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
+                    mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec()).await;
                 }
                 Err(e) => {
                     debug!("[{}] TCP read error: {}", sid, e);
@@ -77,8 +77,8 @@ pub async fn relay_bidirectional_tcp(
 
     info!("[{}] drop connection", sid);
 
-    mux.send(FrameType::Close, sid, Vec::new());
-    mux.drop_session(sid);
+    mux.send(FrameType::Close, sid, Vec::new()).await;
+    mux.drop_session(sid).await;
 }
 
 
@@ -130,7 +130,7 @@ pub async fn relay_bidirectional_udp_client_side(
                     
                     let mut a =  client_local_port_1.lock().await; *a = Some(addr.port());
 
-                    mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
+                    mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec()).await;
                 }
                 Err(e) => {
                     debug!("[{}] UDP read error: {}", sid, e);
@@ -204,8 +204,8 @@ pub async fn relay_bidirectional_udp_client_side(
         _ = break_connection_tcp_check => {}
     }
 
-    mux.send(FrameType::Close, sid, Vec::new());
-    mux.drop_session(sid);
+    mux.send(FrameType::Close, sid, Vec::new()).await;
+    mux.drop_session(sid).await;
 }
 pub async fn relay_bidirectional_udp_server_side(
     sid: u32,
@@ -236,7 +236,7 @@ pub async fn relay_bidirectional_udp_server_side(
                         let mut packet = new_udp_header(addr).expect("cannot wrap udp packet");
                         packet.extend_from_slice(&buf[..n]);
                         
-                        mux_fwd.send(FrameType::Data, sid, packet.to_vec());
+                        mux_fwd.send(FrameType::Data, sid, packet.to_vec()).await;
                     } else {
                         warn!("packet came from illegal server location")
                     }
@@ -301,8 +301,8 @@ pub async fn relay_bidirectional_udp_server_side(
         _ = rns_to_udp => {},
     }
 
-    mux.send(FrameType::Close, sid, Vec::new());
-    mux.drop_session(sid);
+    mux.send(FrameType::Close, sid, Vec::new()).await;
+    mux.drop_session(sid).await;
 }
 
 /// udp must still have an associated tcp connection to detect when the connection is over. 
@@ -335,7 +335,7 @@ pub async fn relay_forwarded_tcp(
                 Ok(0) => break,
                 Ok(n) => {
                     
-                    mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec());
+                    mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec()).await;
                 }
                 Err(e) => {
                     debug!("[{}] TCP read error: {}", sid, e);
@@ -368,8 +368,8 @@ pub async fn relay_forwarded_tcp(
         _ = rns_to_tcp => {},
     }
 
-    mux.send(FrameType::Close, sid, Vec::new());
-    mux.drop_session(sid);
+    mux.send(FrameType::Close, sid, Vec::new()).await;
+    mux.drop_session(sid).await;
 }
 
 pub async fn relay_forwarded_udp(
@@ -397,7 +397,7 @@ pub async fn relay_forwarded_udp(
                     let mut packet = new_udp_header(localhost_server_addr.clone() ).expect("cannot wrap udp packet");
                     packet.extend_from_slice(&buf[..n]);
                     
-                    mux_fwd.send(FrameType::Data, sid, packet.to_vec());
+                    mux_fwd.send(FrameType::Data, sid, packet.to_vec()).await;
                 }
                 Err(e) => {
                     debug!("[{}] TCP read error: {}", sid, e);
@@ -447,8 +447,8 @@ pub async fn relay_forwarded_udp(
         _ = rns_to_tcp => {},
     }
 
-    mux.send(FrameType::Close, sid, Vec::new());
-    mux.drop_session(sid);
+    mux.send(FrameType::Close, sid, Vec::new()).await;
+    mux.drop_session(sid).await;
 }
 
 

@@ -50,14 +50,17 @@ pub async fn run_client(server_hex: &str, listen_addr: &str) {
 pub async fn run_client_forward(server_hex: &str, ports: Vec<ForwardedPort> ) {
     if let Some(destination) = decode_hash(server_hex).await {
         if let Some((mux, node, rx)) = connect_rns(destination).await {
+            info!("a");
             let reconnect_notify = reconnect_generator(mux.clone(), node, rx, destination).await;
 
+            info!("b");
             for port in ports {
                 match port.r#type {
                     PortType::Tcp => {
                         tcp_tunnel(mux.clone(), reconnect_notify.clone(), port).await
                     },
                     PortType::Udp => {
+                        info!("c");
                         udp_tunnel(mux.clone(), reconnect_notify.clone(), port).await
                     },
                     PortType::TcpUdp => {
@@ -218,7 +221,7 @@ async fn establish_link(
             } => {
                 if lid == link_id && is_initiator {
                     info!("RNS link established (rtt={:.1}ms)", rtt * 1000.0);
-                    mux.set_link_id(link_id);
+                    mux.set_link_id(link_id).await;
                     return true;
                 }
             }
@@ -263,12 +266,12 @@ async fn dispatch_and_reconnect(
                     // println!("{:?}",data);
                     for frame in mux.receive_data(&data).await {
                         // println!("type {:?} sid: {:?}", frame.frame_type, frame.session_id);
-                        mux.dispatch(frame);
+                        mux.dispatch(frame).await;
                     }
                 }
                 ProxyEvent::LinkClosed { link_id, reason } => {
                     warn!("Connection lost (link={}, reason={:?})", link_id, reason);
-                    mux.reset();
+                    mux.reset().await;
                     break; // Exit dispatch loop to reconnect
                 }
                 _ => {}
@@ -369,7 +372,7 @@ pub async fn connect_tcp_server_side(
         info!("[{}] -> {}:{} tcp", sid, host, port);
         // Send CONNECT frame through RNS
         let connect_payload = encode_connect_payload(&host, port,false);
-        mux.send(FrameType::Connect, sid, connect_payload);
+        mux.send(FrameType::Connect, sid, connect_payload).await;
 
         // Wait for CONN_OK or CONN_ERR with timeout
         tokio::time::timeout(Duration::from_secs(15), async {
@@ -423,8 +426,8 @@ async fn handle_tcp_connect(
                     Ok(s) => s,
                     Err(e) => {
                         debug!("[{}] Failed to send SOCKS5 reply: {}", sid, e);
-                        mux.send(FrameType::Close, sid, Vec::new());
-                        mux.drop_session(sid);
+                        mux.send(FrameType::Close, sid, Vec::new()).await;
+                        mux.drop_session(sid).await;
                         return None;
                     }
                 }
@@ -432,13 +435,13 @@ async fn handle_tcp_connect(
             Some(Err(reason)) => {
                 warn!("[{}] Remote connect failed: {}", sid, reason);
                 let _ = proto.reply_error(&ReplyError::GeneralFailure).await;
-                mux.drop_session(sid);
+                mux.drop_session(sid).await;
                 return None;
             }
             None => {
                 warn!("[{}] Connect timeout", sid);
                 let _ = proto.reply_error(&ReplyError::TtlExpired).await;
-                mux.drop_session(sid);
+                mux.drop_session(sid).await;
                 return None;
             }
         };
@@ -469,7 +472,7 @@ pub async fn udp_bind_connect(
     
     // Send CONNECT frame through RNS
     let connect_payload = encode_connect_payload(&host, port, true);
-    mux.send(FrameType::Connect, sid, connect_payload);
+    mux.send(FrameType::Connect, sid, connect_payload).await;
 
     // Wait for CONN_OK or CONN_ERR with timeout
     tokio::time::timeout(Duration::from_secs(15), async {
@@ -515,8 +518,8 @@ async fn handle_udp_connect(
                 Ok(s) => Some((udp_stream,s)),
                 Err(e) => {
                     debug!("[{}] Failed to send SOCKS5 reply: {:?}", sid, e);
-                    mux.send(FrameType::Close, sid, Vec::new());
-                    mux.drop_session(sid);
+                    mux.send(FrameType::Close, sid, Vec::new()).await;
+                    mux.drop_session(sid).await;
                     return None;
                 }
             }
@@ -524,13 +527,13 @@ async fn handle_udp_connect(
         Ok(Err(reason)) => {
             warn!("[{}] Remote connect failed: {}", sid, reason);
             let _ = proto.reply_error(&ReplyError::GeneralFailure).await;
-            mux.drop_session(sid);
+            mux.drop_session(sid).await;
             return None;
         }
         Err(_) => {
             warn!("[{}] Connect timeout", sid);
             let _ = proto.reply_error(&ReplyError::TtlExpired).await;
-            mux.drop_session(sid);
+            mux.drop_session(sid).await;
             return None;
         }
     }

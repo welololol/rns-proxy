@@ -141,7 +141,7 @@ impl MuxHandle {
     /// Convenience: send a typed frame.
     pub async fn send(&self, frame_type: FrameType, session_id: u32, payload: Vec<u8>) {
         // info!("send frame");
-        self.send_frame(&Frame::new(frame_type, session_id, payload));
+        self.send_frame(&Frame::new(frame_type, session_id, payload)).await;
     }
 
     /// Dispatch an incoming frame to the appropriate session.
