@@ -37,7 +37,7 @@ pub async fn relay_bidirectional_tcp(
 
     // TCP -> RNS
     let tcp_to_rns = tokio::spawn(async move {
-        let mut buf = [0u8; 65536];
+        let mut buf = [0u8; 65535];
         loop {
             match tcp_read.read(&mut buf).await {
                 Ok(0) => break,
@@ -119,7 +119,7 @@ pub async fn relay_bidirectional_udp_client_side(
 
     // UDP -> RNS
     let udp_to_rns = tokio::spawn(async move {
-        let mut buf = [0u8; 65536];
+        let mut buf = [0u8; 65535];
         loop {
              let stuff = socket.recv_from(&mut buf).await;
              
@@ -181,7 +181,7 @@ pub async fn relay_bidirectional_udp_client_side(
 
     let (mut tcp_read, mut _tcp_write) = tcp_stream.into_split();
     let break_connection_tcp_check = tokio::spawn(async move {
-        let mut buf = [0u8; 65536];
+        let mut buf = [0u8; 65535];
         loop {
             match tcp_read.read(&mut buf).await {
                 Ok(0) => {
@@ -225,7 +225,7 @@ pub async fn relay_bidirectional_udp_server_side(
 
     // UDP -> RNS
     let udp_to_rns = tokio::spawn(async move {
-        let mut buf = [0u8; 65536];
+        let mut buf = [0u8; 65535];
         loop {
              let stuff = socket.recv_from(&mut buf).await;
              
@@ -329,7 +329,7 @@ pub async fn relay_forwarded_tcp(
 
     // TCP -> RNS
     let tcp_to_rns = tokio::spawn(async move {
-        let mut buf = [0u8; 65536];
+        let mut buf = [0u8; 65535];
         loop {
             match tcp_read.read(&mut buf).await {
                 Ok(0) => break,
@@ -388,7 +388,7 @@ pub async fn relay_forwarded_udp(
 
     // UDP -> RNS
     let tcp_to_rns = tokio::spawn(async move {
-        let mut buf = [0u8; 65536];
+        let mut buf = [0u8; 65535];
         loop {
             match udp_read.read(&mut buf).await {
                 Ok(0) => break,
