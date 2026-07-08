@@ -55,7 +55,7 @@ pub async fn relay_bidirectional_tcp(
         while let Some(frame) = session_rx.recv().await {
             match frame.frame_type {
                 FrameType::Data => {
-                    info!("{:?}", &frame.payload);
+                    // info!("{:?}", &frame.payload);
                     if let Err(e) = tcp_write.write_all(&frame.payload).await {
                         warn!("[{}] TCP write error: {}", sid, e);
                         break;
