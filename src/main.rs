@@ -4,7 +4,9 @@
 //! Run as either a server (exit node) or client (local SOCKS5 proxy).
 
 use clap::Parser;
+use log::LevelFilter;
 use rns_proxy::{cli::{Cli, Commands}, client::run_client_forward, filter::{Filter, FilterConfig, FilterResult, PortFilter}, forwarding::{ForwardedPort, PortType}};
+use env_logger;
 
 #[tokio::main]
 async fn main() {
@@ -13,7 +15,10 @@ async fn main() {
     // Init logging
     let log_level = if cli.debug { "debug" } else { "info" };
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level))
-        .format_timestamp_secs()
+        .format_timestamp_millis()
+        .format_source_path(true)
+        .filter_module("rns_net", LevelFilter::Warn) // prevent rns_net from spamming as much into the console
+        // unless there's actually a problem
         .init();
 
     match cli.command {
