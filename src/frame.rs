@@ -100,7 +100,6 @@ impl Frame {
         let session_id = u32::from_be_bytes([buf[1], buf[2], buf[3], buf[4]]);
         let payload_len = u16::from_be_bytes([buf[5], buf[6]]) as usize;
         let total = HDR_SIZE + payload_len;
-        println!("{:?} {:?} {:?} {:?} {:?}", frame_type, session_id, payload_len, total, buf.len());
         if buf.len() < total {
             return None;
         }

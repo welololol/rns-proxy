@@ -194,7 +194,6 @@ pub async fn run_server(identity_path: Option<&str>, filter_config: FilterConfig
                             }
                         }
                         FrameType::Data | FrameType::Close => {
-                            println!("frame: {:?}",frame);
                             mux.dispatch(frame);
                         }
                         _ => {}

@@ -51,7 +51,6 @@ pub async fn run_client_forward(server_hex: &str, ports: Vec<ForwardedPort> ) {
     if let Some(destination) = decode_hash(server_hex).await {
         if let Some((mux, node, rx)) = connect_rns(destination).await {
             let reconnect_notify = reconnect_generator(mux.clone(), node, rx, destination).await;
-            println!("destinations");
 
             for port in ports {
                 match port.r#type {
@@ -144,7 +143,7 @@ pub async fn run_sockets_proxy_handling(listen_addr: &str, mux: MuxHandle, recon
     };
 
 
-    println!("started listener {}", listen_addr);
+    info!("started listener {}", listen_addr);
 
     // let buf = &mut [0u8 ;65536];
     // Accept SOCKS5 connections
@@ -158,9 +157,6 @@ pub async fn run_sockets_proxy_handling(listen_addr: &str, mux: MuxHandle, recon
                         continue;
                     }
                 };
-                println!("{:?}", _addr);
-
-                println!("{:?}", mux.is_connected());
 
                 if !mux.is_connected() {
                     warn!("No RNS link, rejecting connection");
@@ -171,8 +167,6 @@ pub async fn run_sockets_proxy_handling(listen_addr: &str, mux: MuxHandle, recon
                 let sid = mux.next_session_id();
                 let session_rx = mux.register_session(sid);
                 let mux_clone = mux.clone();
-
-                println!("okay");
 
                 tokio::spawn(async move {
                     handle_socks5_session(sid, stream, mux_clone, session_rx).await;

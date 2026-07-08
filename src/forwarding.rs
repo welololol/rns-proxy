@@ -81,7 +81,6 @@ pub async fn tcp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: Fo
                 let mut session_rx = mux.register_session(sid);
                 let mux_clone = mux.clone();
 
-                println!("{:?} {:?}", sid, addr);
                 let target_addr = TargetAddr::Ip(SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), 0)); // ask for any port client server side
 
                 tokio::spawn(async move {
