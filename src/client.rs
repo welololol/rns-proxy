@@ -157,7 +157,7 @@ pub async fn run_sockets_proxy_handling(listen_addr: &str, mux: MuxHandle, recon
                         continue;
                     }
                 };
-                info!("{}" _addr);
+                info!("{}", _addr);
 
                 if !mux.is_connected() {
                     warn!("No RNS link, rejecting connection");
