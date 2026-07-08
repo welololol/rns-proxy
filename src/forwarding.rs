@@ -72,13 +72,13 @@ pub async fn tcp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: Fo
                     }
                 };
                 let mux = reference.clone();
-                if !mux.is_connected() {
+                if !mux.is_connected().await {
                     drop(stream);
                     continue;
                 }
 
-                let sid = mux.next_session_id();
-                let mut session_rx = mux.register_session(sid);
+                let sid = mux.next_session_id().await;
+                let mut session_rx = mux.register_session(sid).await;
                 let mux_clone = mux.clone();
 
                 let target_addr = TargetAddr::Ip(SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), 0)); // ask for any port client server side
@@ -127,13 +127,13 @@ pub async fn udp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: Fo
                     }
                 };
                 let mux = reference.clone();
-                if !mux.is_connected() {
+                if !mux.is_connected().await {
                     drop(stream);
                     continue;
                 }
 
-                let sid = mux.next_session_id();
-                let mut session_rx = mux.register_session(sid);
+                let sid = mux.next_session_id().await;
+                let mut session_rx = mux.register_session(sid).await;
                 let mux_clone = mux.clone();
 
                 // let connect_result = udp_bind_connect(sid,mux.clone(), &mut session_rx, target_addr).await;

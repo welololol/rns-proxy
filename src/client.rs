@@ -159,14 +159,14 @@ pub async fn run_sockets_proxy_handling(listen_addr: &str, mux: MuxHandle, recon
                 };
                 info!("{}", _addr);
 
-                if !mux.is_connected() {
+                if !mux.is_connected().await {
                     warn!("No RNS link, rejecting connection");
                     drop(stream);
                     continue;
                 }
 
-                let sid = mux.next_session_id();
-                let session_rx = mux.register_session(sid);
+                let sid = mux.next_session_id().await;
+                let session_rx = mux.register_session(sid).await;
                 let mux_clone = mux.clone();
 
                 tokio::spawn(async move {
@@ -261,7 +261,7 @@ async fn dispatch_and_reconnect(
             match event {
                 ProxyEvent::LinkData { data, .. } => {
                     // println!("{:?}",data);
-                    for frame in mux.receive_data(&data) {
+                    for frame in mux.receive_data(&data).await {
                         // println!("type {:?} sid: {:?}", frame.frame_type, frame.session_id);
                         mux.dispatch(frame);
                     }

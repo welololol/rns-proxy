@@ -16,7 +16,8 @@
 
 use std::collections::HashMap;
 use std::error;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use tokio::sync::{Mutex};
 
 use log::{debug, error, info, warn};
 use rns_core::constants::LINK_MDU;
@@ -61,46 +62,46 @@ impl MuxHandle {
     }
 
     /// Set the active link id (called when the link is established).
-    pub fn set_link_id(&self, link_id: LinkId) {
-        *self.inner.link_id.lock().unwrap() = Some(link_id);
+    pub async fn set_link_id(&self, link_id: LinkId) {
+        *(self.inner.link_id.lock().await) = Some(link_id);
     }
 
     /// Clear the link id (called when the link is closed).
-    pub fn clear_link_id(&self) {
-        *self.inner.link_id.lock().unwrap() = None;
+    pub async fn clear_link_id(&self) {
+        *(self.inner.link_id.lock().await) = None;
     }
 
     /// Reset the mux for a new link (clears sessions and reassembly buffer).
     ///
     /// Called on reconnection.
-    pub fn reset(&self) {
-        *self.inner.link_id.lock().unwrap() = None;
-        self.inner.sessions.lock().unwrap().clear();
-        self.inner.recv_buf.lock().unwrap().clear();
+    pub async fn reset(&self) {
+        *(self.inner.link_id.lock().await) = None;
+        (self.inner.sessions.lock().await).clear();
+        (self.inner.recv_buf.lock().await).clear();
     }
 
     /// Check if link is active.
-    pub fn is_connected(&self) -> bool {
-        self.inner.link_id.lock().unwrap().is_some()
+    pub async fn is_connected(&self) -> bool {
+        (self.inner.link_id.lock().await).is_some()
     }
 
     /// Get the next session id.
-    pub fn next_session_id(&self) -> u32 {
-        let mut sid = self.inner.next_sid.lock().unwrap();
+    pub async fn next_session_id(&self) -> u32 {
+        let mut sid = (self.inner.next_sid.lock().await);
         *sid = sid.wrapping_add(1);
         *sid
     }
 
     /// Register a session. Returns a receiver for frames addressed to this session.
-    pub fn register_session(&self, sid: u32) -> mpsc::UnboundedReceiver<Frame> {
+    pub async fn register_session(&self, sid: u32) -> mpsc::UnboundedReceiver<Frame> {
         let (tx, rx) = mpsc::unbounded_channel();
-        self.inner.sessions.lock().unwrap().insert(sid, tx);
+        (self.inner.sessions.lock().await).insert(sid, tx);
         rx
     }
 
     /// Remove a session.
-    pub fn drop_session(&self, sid: u32) {
-        self.inner.sessions.lock().unwrap().remove(&sid);
+    pub async fn drop_session(&self, sid: u32) {
+        (self.inner.sessions.lock().await).remove(&sid);
     }
 
     /// Send a frame over the RNS link.
@@ -111,8 +112,8 @@ impl MuxHandle {
     ///
     /// Note that we are using .inner.link_id.lock as the guard to prevent
     /// multiple different sids from sending at the same time and scrambling packets
-    pub fn send_frame(&self, frame: &Frame) {
-        let lock = self.inner.link_id.lock().unwrap();
+    pub async fn send_frame(&self, frame: &Frame) {
+        let lock = self.inner.link_id.lock().await;
         let value = &*(lock);
         let link_id = match value {
             Some(id) => id,
@@ -138,16 +139,17 @@ impl MuxHandle {
     }
 
     /// Convenience: send a typed frame.
-    pub fn send(&self, frame_type: FrameType, session_id: u32, payload: Vec<u8>) {
+    pub async fn send(&self, frame_type: FrameType, session_id: u32, payload: Vec<u8>) {
         // info!("send frame");
         self.send_frame(&Frame::new(frame_type, session_id, payload));
     }
 
     /// Dispatch an incoming frame to the appropriate session.
-    pub fn dispatch(&self, frame: Frame) {
+    pub async fn dispatch(&self, frame: Frame) {
         let sid = frame.session_id;
         let ft = frame.frame_type;
-        let sessions = self.inner.sessions.lock().unwrap();
+
+        let sessions = self.inner.sessions.lock().await;
         if let Some(tx) = sessions.get(&sid) {
             if tx.send(frame).is_err() {
                 debug!("Session {} channel closed", sid);
@@ -161,8 +163,8 @@ impl MuxHandle {
     ///
     /// Called when `on_link_data` fires. The data may be a partial chunk of a
     /// larger frame, so we buffer and try to decode complete frames.
-    pub fn receive_data(&self, data: &[u8]) -> Vec<Frame> {
-        let mut buf = self.inner.recv_buf.lock().unwrap();
+    pub async fn receive_data(&self, data: &[u8]) -> Vec<Frame> {
+        let mut buf = self.inner.recv_buf.lock().await;
         buf.extend_from_slice(data);
         // info!("buf: {:?}", buf);
 
