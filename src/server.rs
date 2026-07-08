@@ -108,12 +108,12 @@ pub async fn run_server(identity_path: Option<&str>, filter_config: FilterConfig
     let link_muxes: Arc<Mutex<std::collections::HashMap<LinkId, MuxHandle>>> =
         Arc::new(Mutex::new(std::collections::HashMap::new()));
 
-    // Periodic announce task
+    // Periodic announce task. Every 2 hours which is pretty much the minimum
     let node_announce = Arc::clone(&node);
     let dest_clone = dest.clone();
     tokio::spawn(async move {
         loop {
-            tokio::time::sleep(Duration::from_secs(60)).await;
+            tokio::time::sleep(Duration::from_secs(7200)).await;
             let id = Identity::from_private_key(&identity_prv_bytes);
             if let Err(e) = node_announce.announce(&dest_clone, &id, None) {
                 warn!("Failed to send periodic announce: {:?}", e);
@@ -228,7 +228,7 @@ async fn handle_server_session_tcp(
                 return;
             }
         };
-        info!("{} idk", sid);
+        info!("{} how it went {:?}", sid ,stream);
 
         // Signal success
         mux.send(FrameType::ConnectOk, sid, Vec::new());

@@ -1,11 +1,14 @@
 //! Bidirectional TCP ↔ RNS relay — used by both client and server sessions.
+//!
+//! Note 1, idk where to put this but the buffer has to be bigger than 64k as v
+//! orginally was 4096 but occasionally there would be packets
 
 use std::net::{Ipv4Addr, ToSocketAddrs};
 use std::os::unix::net::SocketAddr;
 use std::str::SplitWhitespace;
 use std::sync::Arc;
 use std::time::Duration;
-
+ 
 use fast_socks5::{new_udp_header, parse_udp_request};
 use fast_socks5::util::target_addr::{TargetAddr, ToTargetAddr};
 use log::{debug, error, info, warn};
@@ -34,7 +37,7 @@ pub async fn relay_bidirectional_tcp(
 
     // TCP -> RNS
     let tcp_to_rns = tokio::spawn(async move {
-        let mut buf = [0u8; 4096];
+        let mut buf = [0u8; 65536];
         loop {
             match tcp_read.read(&mut buf).await {
                 Ok(0) => break,
@@ -116,7 +119,7 @@ pub async fn relay_bidirectional_udp_client_side(
 
     // UDP -> RNS
     let udp_to_rns = tokio::spawn(async move {
-        let mut buf = [0u8; 4096];
+        let mut buf = [0u8; 65536];
         loop {
              let stuff = socket.recv_from(&mut buf).await;
              
@@ -178,7 +181,7 @@ pub async fn relay_bidirectional_udp_client_side(
 
     let (mut tcp_read, mut _tcp_write) = tcp_stream.into_split();
     let break_connection_tcp_check = tokio::spawn(async move {
-        let mut buf = [0u8; 4096];
+        let mut buf = [0u8; 65536];
         loop {
             match tcp_read.read(&mut buf).await {
                 Ok(0) => {
@@ -222,7 +225,7 @@ pub async fn relay_bidirectional_udp_server_side(
 
     // UDP -> RNS
     let udp_to_rns = tokio::spawn(async move {
-        let mut buf = [0u8; 4096];
+        let mut buf = [0u8; 65536];
         loop {
              let stuff = socket.recv_from(&mut buf).await;
              
@@ -326,7 +329,7 @@ pub async fn relay_forwarded_tcp(
 
     // TCP -> RNS
     let tcp_to_rns = tokio::spawn(async move {
-        let mut buf = [0u8; 4096];
+        let mut buf = [0u8; 65536];
         loop {
             match tcp_read.read(&mut buf).await {
                 Ok(0) => break,
@@ -385,7 +388,7 @@ pub async fn relay_forwarded_udp(
 
     // UDP -> RNS
     let tcp_to_rns = tokio::spawn(async move {
-        let mut buf = [0u8; 4096];
+        let mut buf = [0u8; 65536];
         loop {
             match udp_read.read(&mut buf).await {
                 Ok(0) => break,

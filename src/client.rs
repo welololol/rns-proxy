@@ -260,7 +260,9 @@ async fn dispatch_and_reconnect(
 
             match event {
                 ProxyEvent::LinkData { data, .. } => {
+                    // println!("{:?}",data);
                     for frame in mux.receive_data(&data) {
+                        println!("type {:?} sid: {:?}", frame.frame_type, frame.session_id);
                         mux.dispatch(frame);
                     }
                 }

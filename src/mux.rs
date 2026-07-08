@@ -15,13 +15,16 @@
 //! in rns-rs, causing `NotReady` errors after the first 2 messages.
 
 use std::collections::HashMap;
+use std::error;
 use std::sync::{Arc, Mutex};
 
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use rns_core::constants::LINK_MDU;
-use rns_net::{LinkId, RnsNode};
+use rns_core::msgpack::Error;
+use rns_net::{LinkId, LocalServerFactory, RnsNode};
 use tokio::sync::mpsc;
 
+use crate::frame::FrameDecodeState::{DecodingFailed, Finished, MoreDataRequired};
 use crate::{Frame, FrameType};
 
 /// Context byte for our link data. We use CONTEXT_NONE (0x00) which routes
@@ -105,16 +108,18 @@ impl MuxHandle {
     /// The encoded frame is split into chunks of at most `LINK_MDU` bytes and
     /// each chunk is sent as a separate `send_on_link` call with `CONTEXT_NONE`.
     /// The receiver reassembles using the frame length header.
+    ///
+    /// Note that we are using .inner.link_id.lock as the guard to prevent
+    /// multiple different sids from sending at the same time and scrambling packets
     pub fn send_frame(&self, frame: &Frame) {
-        info!("a");
-        let link_id = match *self.inner.link_id.lock().unwrap() {
+        let lock = self.inner.link_id.lock();
+        let link_id = match *lock.unwrap() {
             Some(id) => id,
             None => {
                 debug!("send_frame: no active link, dropping frame");
                 return;
             }
         };
-        info!("b");
 
         let encoded = frame.encode();
         let node = &self.inner.node;
@@ -153,18 +158,45 @@ impl MuxHandle {
     /// Called when `on_link_data` fires. The data may be a partial chunk of a
     /// larger frame, so we buffer and try to decode complete frames.
     pub fn receive_data(&self, data: &[u8]) -> Vec<Frame> {
+        info!("buf: {:?}", data);
         let mut buf = self.inner.recv_buf.lock().unwrap();
         buf.extend_from_slice(data);
 
         let mut frames = Vec::new();
         loop {
             match Frame::decode(&buf) {
-                Some((frame, consumed)) => {
+                Ok((frame, consumed)) => {
                     buf.drain(..consumed);
                     frames.push(frame);
                 }
-                None => break,
+                Err(err) => {
+                    match err {
+                        Finished => {
+                            // finished decoding all packets basically
+                            // though there might still be like 5 bytes left in the buffer
+                            break;
+                        }
+                        MoreDataRequired => {
+                            break;
+                           // just wait for next packet 
+                        }
+                        DecodingFailed => {
+                            // something has gone really wrong, just clear the buffer and hope things
+                            // work out.
+                            error!("decoding failed for a packet, something really bad is happening {:?}",buf);
+                            error!("ignoring packet buffer and hoping that will fix it");
+                            buf.drain(..);
+                            break;
+                        }
+                    }
+                },
             }
+        }
+
+        info!("frames {:?}", &frames);
+        if buf.len() > 9000 {
+            warn!("buf thing: {:?}", &buf);
+            assert!(false);
         }
         frames
     }

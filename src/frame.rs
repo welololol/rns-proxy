@@ -9,7 +9,10 @@
 
 use std::fmt;
 
-use log::info;
+use clap::error::ErrorFormatter;
+use log::{error, info, warn};
+
+use crate::frame::FrameDecodeState::{DecodingFailed, Finished, MoreDataRequired};
 
 // ---------------------------------------------------------------------------
 // Frame types and constants
@@ -70,6 +73,12 @@ pub struct Frame {
     pub payload: Vec<u8>,
 }
 
+pub enum FrameDecodeState {
+    MoreDataRequired,
+    DecodingFailed,
+    Finished,
+}
+
 impl Frame {
     pub fn new(frame_type: FrameType, session_id: u32, payload: Vec<u8>) -> Self {
         Self {
@@ -92,19 +101,23 @@ impl Frame {
 
     /// Decode a frame from a complete buffer (header + payload).
     /// Returns `None` if the buffer is too small or the type is unknown.
-    pub fn decode(buf: &[u8]) -> Option<(Self, usize)> {
+    pub fn decode(buf: &[u8]) -> Result<(Self, usize), FrameDecodeState> {
         if buf.len() < HDR_SIZE {
-            return None;
+            error!("Buf undersized? somehow, probably a bug, packet has been ignored");
+            return Err(Finished);
         }
-        let frame_type = FrameType::from_u8(buf[0])?;
+        let frame_type = FrameType::from_u8(buf[0]).ok_or(DecodingFailed)?;
         let session_id = u32::from_be_bytes([buf[1], buf[2], buf[3], buf[4]]);
         let payload_len = u16::from_be_bytes([buf[5], buf[6]]) as usize;
         let total = HDR_SIZE + payload_len;
         if buf.len() < total {
-            return None;
+            return Err(MoreDataRequired);
+        } else if buf.len() < total {
+            // error!("Buf oversized? 100% a bug, ignoring packet hoping that'll fix things");
+            // return Err(DecodingFailed)
         }
         let payload = buf[HDR_SIZE..total].to_vec();
-        Some((
+        Ok((
             Self {
                 frame_type,
                 session_id,
