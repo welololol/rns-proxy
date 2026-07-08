@@ -216,9 +216,9 @@ async fn handle_server_session_tcp(
     filter_config: FilterConfig
 ) {
 
-    info!("start");
+    info!("{} start", sid);
     if let Some(socket) = filter_and_convert(addr.clone(), Some(&filter_config)).await {
-        info!("hi");
+        info!("{} hi", sid);
         let stream = match TcpStream::connect(socket).await {
             Ok(s) => s,
             Err(e) => {
@@ -228,12 +228,13 @@ async fn handle_server_session_tcp(
                 return;
             }
         };
-        info!("idk");
+        info!("{} idk", sid);
 
         // Signal success
         mux.send(FrameType::ConnectOk, sid, Vec::new());
 
         // Data relay (shared implementation)
+        info!("{} streaming", sid);
         relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
         info!("[{}] TCP Closed", sid);
     } else {

@@ -17,7 +17,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use log::{debug, warn};
+use log::{debug, info, warn};
 use rns_core::constants::LINK_MDU;
 use rns_net::{LinkId, RnsNode};
 use tokio::sync::mpsc;
@@ -106,6 +106,7 @@ impl MuxHandle {
     /// each chunk is sent as a separate `send_on_link` call with `CONTEXT_NONE`.
     /// The receiver reassembles using the frame length header.
     pub fn send_frame(&self, frame: &Frame) {
+        info!("a");
         let link_id = match *self.inner.link_id.lock().unwrap() {
             Some(id) => id,
             None => {
@@ -113,6 +114,7 @@ impl MuxHandle {
                 return;
             }
         };
+        info!("b");
 
         let encoded = frame.encode();
         let node = &self.inner.node;
@@ -128,6 +130,7 @@ impl MuxHandle {
 
     /// Convenience: send a typed frame.
     pub fn send(&self, frame_type: FrameType, session_id: u32, payload: Vec<u8>) {
+        info!("send frame");
         self.send_frame(&Frame::new(frame_type, session_id, payload));
     }
 

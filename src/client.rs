@@ -372,6 +372,8 @@ pub async fn connect_tcp_server_side(
         // Wait for CONN_OK or CONN_ERR with timeout
         tokio::time::timeout(Duration::from_secs(15), async {
             while let Some(frame) = session_rx.recv().await {
+                println!("type: {:?}", frame.frame_type); 
+                println!("type: {:?}", frame.session_id); 
                 match frame.frame_type {
                     FrameType::ConnectOk => return Ok(()),
                     FrameType::ConnectErr => {
