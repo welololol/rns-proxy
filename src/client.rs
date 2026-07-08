@@ -360,10 +360,13 @@ pub async fn connect_tcp_server_side(
     target_addr: TargetAddr,)
     -> Option<Result<(),String>>
 {
-     if let Some(socket_addr) = filter_and_convert(target_addr, None).await {
+    // 
+     // if let Some(socket_addr) = filter_and_convert(target_addr, None).await {
 
+        let (host, port) = target_addr.clone().into_string_and_port();
+        info!("[{}] -> {}:{} tcp", sid, host, port);
         // Send CONNECT frame through RNS
-        let connect_payload = encode_connect_payload(&format!("{}",socket_addr.ip()), socket_addr.port(),false);
+        let connect_payload = encode_connect_payload(&host, port,false);
         mux.send(FrameType::Connect, sid, connect_payload);
 
         // Wait for CONN_OK or CONN_ERR with timeout
@@ -382,9 +385,9 @@ pub async fn connect_tcp_server_side(
         })
         .await.ok()
          
-     } else {
-         return None;
-     }
+     // } else {
+         // return None;
+     // }
 }
 
 async fn handle_tcp_connect(
@@ -400,43 +403,51 @@ async fn handle_tcp_connect(
     info!("[{}] -> {}:{} tcp", sid, host, port);
 
 
-    let connect_result  = connect_tcp_server_side(sid,mux.clone(), session_rx, target_addr).await;
-    // Reply to SOCKS5 client based on RNS connection result
-    let dummy_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
+    let connect_result = connect_tcp_server_side(sid,mux.clone(), session_rx, target_addr).await;
 
-    let stream = match connect_result {
-        Some(Ok(())) => {
-            // Connection succeeded -- send SOCKS5 success reply
-            match proto.reply_success(dummy_addr).await {
-                Ok(s) => s,
-                Err(e) => {
-                    debug!("[{}] Failed to send SOCKS5 reply: {}", sid, e);
-                    mux.send(FrameType::Close, sid, Vec::new());
-                    mux.drop_session(sid);
-                    return None;
+    info!("[{}] -> {}:{} connection result {:?}", sid, host, port, connect_result);
+
+    if let Some(_) = connect_result {
+    
+        // Reply to SOCKS5 client based on RNS connection result
+        let dummy_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
+
+        let stream = match connect_result {
+            Some(Ok(())) => {
+                // Connection succeeded -- send SOCKS5 success reply
+                match proto.reply_success(dummy_addr).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        debug!("[{}] Failed to send SOCKS5 reply: {}", sid, e);
+                        mux.send(FrameType::Close, sid, Vec::new());
+                        mux.drop_session(sid);
+                        return None;
+                    }
                 }
             }
-        }
-        Some(Err(reason)) => {
-            warn!("[{}] Remote connect failed: {}", sid, reason);
-            let _ = proto.reply_error(&ReplyError::GeneralFailure).await;
-            mux.drop_session(sid);
-            return None;
-        }
-        None => {
-            warn!("[{}] Connect timeout", sid);
-            let _ = proto.reply_error(&ReplyError::TtlExpired).await;
-            mux.drop_session(sid);
-            return None;
-        }
-    };
+            Some(Err(reason)) => {
+                warn!("[{}] Remote connect failed: {}", sid, reason);
+                let _ = proto.reply_error(&ReplyError::GeneralFailure).await;
+                mux.drop_session(sid);
+                return None;
+            }
+            None => {
+                warn!("[{}] Connect timeout", sid);
+                let _ = proto.reply_error(&ReplyError::TtlExpired).await;
+                mux.drop_session(sid);
+                return None;
+            }
+        };
 
 
-    info!("[{}] - > {}:{}, fully connected to", sid, host, port);
+        info!("[{}] - > {}:{}, fully connected to", sid, host, port);
 
-    // Data relay (shared implementation)
-    // relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
-    return Some(stream)
+        // Data relay (shared implementation)
+        // relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
+        return Some(stream)
+    } else {
+        return None;
+    }
 }
 
 

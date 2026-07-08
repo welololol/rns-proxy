@@ -133,7 +133,6 @@ pub fn encode_connect_payload(host: &str, port: u16, udp: bool) -> Vec<u8> {
     buf.extend_from_slice(h);
     buf.extend_from_slice(&port.to_be_bytes());
 
-    info!("{}", udp);
     if udp { // setting byte could be used for more data later on but right now it's just for udp.
         buf.extend_from_slice(&[0b10000000]);
     } else {

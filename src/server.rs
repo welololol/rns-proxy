@@ -194,7 +194,7 @@ pub async fn run_server(identity_path: Option<&str>, filter_config: FilterConfig
                             }
                         }
                         FrameType::Data | FrameType::Close => {
-                            info!("{:?}", frame);
+                            // info!("{:?}", frame);
                             mux.dispatch(frame);
                         }
                         _ => {}
@@ -216,7 +216,9 @@ async fn handle_server_session_tcp(
     filter_config: FilterConfig
 ) {
 
+    info!("start");
     if let Some(socket) = filter_and_convert(addr.clone(), Some(&filter_config)).await {
+        info!("hi");
         let stream = match TcpStream::connect(socket).await {
             Ok(s) => s,
             Err(e) => {
@@ -226,6 +228,7 @@ async fn handle_server_session_tcp(
                 return;
             }
         };
+        info!("idk");
 
         // Signal success
         mux.send(FrameType::ConnectOk, sid, Vec::new());
