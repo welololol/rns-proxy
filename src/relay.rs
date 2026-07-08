@@ -29,6 +29,9 @@ pub async fn relay_bidirectional_tcp(
     let (mut tcp_read, mut tcp_write) = stream.into_split();
     let mux_fwd = mux.clone();
 
+
+    info!("[{}] relay", sid);
+
     // TCP -> RNS
     let tcp_to_rns = tokio::spawn(async move {
         let mut buf = [0u8; 4096];

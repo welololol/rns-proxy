@@ -157,6 +157,7 @@ pub async fn run_sockets_proxy_handling(listen_addr: &str, mux: MuxHandle, recon
                         continue;
                     }
                 };
+                info!("{}" _addr);
 
                 if !mux.is_connected() {
                     warn!("No RNS link, rejecting connection");
@@ -332,6 +333,7 @@ async fn handle_socks5_session(
             return;
         }
     };
+    info!("hand shake");
 
 
     match cmd {
@@ -428,6 +430,9 @@ async fn handle_tcp_connect(
             return None;
         }
     };
+
+
+    info!("[{}] - > {}:{}, fully connected to", sid, host, port);
 
     // Data relay (shared implementation)
     // relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
