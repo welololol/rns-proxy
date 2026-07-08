@@ -394,6 +394,8 @@ async fn handle_tcp_connect(
 ) -> Option<TcpStream> {
     // info!("udp test data: {:?}, {:?}",cmd, target_addr);
 
+    let (host, port) = target_addr.clone().into_string_and_port();
+    info!("[{}] -> {}:{} tcp", sid, host, port);
 
 
     let connect_result  = connect_tcp_server_side(sid,mux.clone(), session_rx, target_addr).await;
@@ -443,7 +445,7 @@ pub async fn udp_bind_connect(
 {
     let (host, port) = target_addr.into_string_and_port();
 
-    info!("[{}] -> {}:{}", sid, host, port);
+    info!("[{}] -> {}:{} udp", sid, host, port);
     
     // Send CONNECT frame through RNS
     let connect_payload = encode_connect_payload(&host, port, true);
