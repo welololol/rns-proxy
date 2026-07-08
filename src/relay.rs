@@ -72,6 +72,8 @@ pub async fn relay_bidirectional_tcp(
         _ = rns_to_tcp => {},
     }
 
+    info!("[{}] drop connection", sid);
+
     mux.send(FrameType::Close, sid, Vec::new());
     mux.drop_session(sid);
 }
