@@ -276,7 +276,7 @@ async fn dispatch_and_reconnect(
         }
 
         // --- Reconnection phase ---
-        let mut delay = 1u64;
+        let mut delay = 0u64;
 
         loop {
             info!("Reconnecting in {}s...", delay);
@@ -307,7 +307,7 @@ async fn dispatch_and_reconnect(
             }
 
             warn!("Reconnection failed, will retry...");
-            delay = (delay * 2).min(30);
+            delay = (delay * 2 + 1).min(30);
         }
     }
 }
