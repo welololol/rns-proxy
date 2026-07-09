@@ -113,6 +113,8 @@ impl MuxHandle {
     /// Note that we are using .inner.link_id.lock as the guard to prevent
     /// multiple different sids from sending at the same time and scrambling packets
     pub async fn send_frame(&self, frame: &Frame) {
+        let encoded = frame.encode();
+
         let lock = self.inner.link_id.lock().await;
         let value = &*(lock);
         let link_id = match value {
@@ -123,7 +125,6 @@ impl MuxHandle {
             }
         };
 
-        let encoded = frame.encode();
         let node = &self.inner.node;
 
         // Send in LINK_MDU-sized chunks

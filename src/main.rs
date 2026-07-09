@@ -44,16 +44,14 @@ async fn main() {
         } => {
             rns_proxy::client::run_client(&destination, &listen).await;
         }
-        Commands::Connect { destination, ports} => {
-            run_client_forward(&destination, vec![ForwardedPort{
-                server_port: 34197,
-                client_port: 34197,
-                r#type: PortType::Udp
-                
-            }]).await;
+        Commands::Connect { destination, tcp_port, udp_port, both_port} => {
+
+            let ports_to_connect = connect_vec_merging_connect(tcp_port, udp_port, both_port);
+            println!("{:?}",ports_to_connect);
+            run_client_forward(&destination, ports_to_connect).await;
             // rns_proxy::server::run_server(identity_file.as_deref()).await;
         }
-        Commands::Forward {identity_file, ports} => {
+        Commands::Forward{identity_file, tcp_port, udp_port, both_port} => {
             // run_client_forward(&destination, vec![ForwardedPort{
             //     server_port: 34197,
             //     client_port: 34197,
@@ -61,18 +59,63 @@ async fn main() {
                 
             // }]).await;
             // // rns_proxy::server::run_server(identity_file.as_deref()).await;
-            rns_proxy::server::run_server(identity_file.as_deref(),
-                FilterConfig {
-                    filters: vec![Filter {
-                        address_filter: rns_proxy::filter::AddressFilter::All,
-                        port_filter: PortFilter{
-                            port_filter: rns_proxy::filter::PortFilterType::All,
-                            port_type: PortType::TcpUdp,
-                        },
-                        filter_result: FilterResult::Include,
-                    }],
-                }).await;
+            rns_proxy::server::run_server(identity_file.as_deref(), connect_vec_merging_forward(tcp_port,udp_port,both_port)).await;
                 
         }
     }
+}
+
+fn connect_vec_merging_connect(tcp_port: Vec<(u16,u16)>,udp_port: Vec<(u16,u16)>, both_port: Vec<(u16,u16)>) -> Vec<ForwardedPort> {
+    let mut vec = Vec::new();
+
+    // might be a nicer way of simplifying later, idc for now
+    for port in tcp_port {
+        vec.push(ForwardedPort{ server_port: port.0, client_port: port.1, r#type: PortType::Tcp})
+    }
+    for port in udp_port {
+        vec.push(ForwardedPort{ server_port: port.0, client_port: port.1, r#type: PortType::Udp})
+    }
+    for port in both_port {
+        vec.push(ForwardedPort{ server_port: port.0, client_port: port.1, r#type: PortType::TcpUdp})
+    }
+
+
+    vec
+}
+
+fn connect_vec_merging_forward(tcp_port: Vec<u16>,udp_port: Vec<u16>, both_port: Vec<u16>) -> FilterConfig {
+    let mut vec = Vec::new();
+
+    // oh my boilerplate
+    for port in tcp_port {
+       vec.push(Filter {
+            address_filter: rns_proxy::filter::AddressFilter::Localhost,
+            port_filter: PortFilter{
+                port_filter: rns_proxy::filter::PortFilterType::Single(port),
+                port_type: PortType::Tcp,
+            },
+            filter_result: FilterResult::Include,
+        }); 
+    }
+    for port in udp_port {
+       vec.push(Filter {
+            address_filter: rns_proxy::filter::AddressFilter::Localhost,
+            port_filter: PortFilter{
+                port_filter: rns_proxy::filter::PortFilterType::Single(port),
+                port_type: PortType::Udp,
+            },
+            filter_result: FilterResult::Include,
+        }); 
+    }
+    for port in both_port {
+       vec.push(Filter {
+            address_filter: rns_proxy::filter::AddressFilter::Localhost,
+            port_filter: PortFilter{
+                port_filter: rns_proxy::filter::PortFilterType::Single(port),
+                port_type: PortType::TcpUdp,
+            },
+            filter_result: FilterResult::Include,
+        }); 
+    };
+    return FilterConfig { filters: vec }
 }

@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use prse::try_parse;
 
 #[derive(Parser)]
 #[command(name = "rns-proxy")]
@@ -37,16 +38,41 @@ pub enum Commands {
         #[arg(short, long)]
         destination: String,
 
-        /// Local SOCKS5 listen address
-        #[arg(short, long)]
-        ports: Vec<String>,
+        // server to client ports.
+        #[arg(short, long, value_parser = port_parser)]
+        udp_port: Vec<(u16,u16)>,
+
+        #[arg(short, long, value_parser = port_parser)]
+        tcp_port: Vec<(u16,u16)>,
+
+        #[arg(short, long, value_parser = port_parser)]
+        both_port: Vec<(u16,u16)>, // both udp and tcp
     },
     Forward  {
         #[arg(long, value_name = "PATH")]
         identity_file: Option<String>,
 
-        /// Local SOCKS5 listen address
         #[arg(short, long)]
-        ports: Vec<String>,
+        udp_port: Vec<u16>,
+
+        #[arg(short, long)]
+        tcp_port: Vec<u16>,
+
+        #[arg(short, long)]
+        both_port: Vec<u16>, // both udp and tcp
     }
+}
+
+
+
+fn port_parser(s: &str) -> Result<(u16,u16),String> {
+    if let Ok((server_port,client_port)) = try_parse!(s,"{}:{}") {
+        return Ok((server_port,client_port));
+    }
+    if let Ok(port) = try_parse!(s,"{}") {
+        return Ok((port,port));
+    }
+
+
+    return Err("Invalid port input".into());
 }

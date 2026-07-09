@@ -27,14 +27,14 @@ use udp_stream::UdpListener;
 
 use crate::{client::{connect_tcp_server_side, udp_bind_connect}, mux::MuxHandle, relay::{relay_forwarded_tcp, relay_forwarded_udp}};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum PortType {
     Tcp,
     Udp,
     TcpUdp, // both
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ForwardedPort {
     pub server_port: u16,
     pub client_port: u16,
@@ -81,7 +81,7 @@ pub async fn tcp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: Fo
                 let mut session_rx = mux.register_session(sid).await;
                 let mux_clone = mux.clone();
 
-                let target_addr = TargetAddr::Ip(SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), 0)); // ask for any port client server side
+                let target_addr = TargetAddr::Ip(SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), port.server_port)); // ask for any port client server side
 
                 tokio::spawn(async move {
                     if let Some(_) = connect_tcp_server_side(sid,  mux.clone(), &mut session_rx, target_addr ).await {

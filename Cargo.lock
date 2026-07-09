@@ -470,6 +470,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
+name = "itertools"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "jiff"
 version = "0.2.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -617,6 +626,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "prse"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "539f9a8af8a73d97bfc5431b23b73bc9502814ba9f171f7f16d8a7476c7d99ce"
+dependencies = [
+ "memchr",
+ "prse-derive",
+]
+
+[[package]]
+name = "prse-derive"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1162e568f36938611f2fb441cb68897876d9d9cee9a577e69b8253e66a026ee"
+dependencies = [
+ "itertools",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "quote"
 version = "1.0.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -738,6 +769,7 @@ dependencies = [
  "fast-socks5",
  "hex",
  "log",
+ "prse",
  "rns-core",
  "rns-crypto",
  "rns-net",
