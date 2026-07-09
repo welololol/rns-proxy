@@ -58,12 +58,27 @@ pub async fn run_client_forward(server_hex: &str, ports: Vec<ForwardedPort> ) {
                         });
                     },
                     PortType::Udp => {
-                        info!("c");
-                        udp_tunnel(mux.clone(), reconnect_notify.clone(), port).await
+                        let notify = reconnect_notify.clone();
+                        let mux = mux.clone();
+                        tokio::spawn(async move {
+                            udp_tunnel(mux.clone(), notify, port).await
+                        });
+                            
                     },
+                    // oh my boilerplate.
                     PortType::TcpUdp => {
-                        tcp_tunnel(mux.clone(), reconnect_notify.clone(), port.clone()).await;
-                        udp_tunnel(mux.clone(), reconnect_notify.clone(), port).await;
+                        let notify = reconnect_notify.clone();
+                        let mux1 = mux.clone();
+                        let v = port.clone();
+                        tokio::spawn(async move {
+                            tcp_tunnel(mux1, notify, v).await
+                        });
+                        let notify = reconnect_notify.clone();
+                        let mux2 = mux.clone();
+                        let v = port.clone();
+                        tokio::spawn(async move {
+                            udp_tunnel(mux2, notify, v).await
+                        });
                     }
                 }
             }
