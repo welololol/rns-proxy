@@ -9,8 +9,6 @@
 
 use std::fmt;
 
-use clap::error::ErrorFormatter;
-use log::{error, info, warn};
 
 use crate::frame::FrameDecodeState::{DecodingFailed,  MoreDataRequired};
 

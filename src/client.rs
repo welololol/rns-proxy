@@ -16,21 +16,17 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
-use clap::Command;
 use fast_socks5::server::Socks5ServerProtocol;
-use fast_socks5::server::states::{CommandRead, Opened};
+use fast_socks5::server::states::CommandRead;
 use fast_socks5::util::target_addr::TargetAddr;
 use fast_socks5::{ReplyError, Socks5Command};
 use log::{debug, error, info, warn};
-use rns_net::discovery::filter_and_sort_interfaces;
 use rns_net::{LinkId, RnsNode};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::{mpsc, Notify};
-use tokio::time::error::Elapsed;
 
-use crate::filter::filter_and_convert;
-use crate::forwarding::PortType::{self, Tcp};
+use crate::forwarding::PortType;
 use crate::forwarding::{ForwardedPort, tcp_tunnel, udp_tunnel};
 use crate::mux::MuxHandle;
 use crate::relay::relay_bidirectional_udp_client_side;
@@ -50,14 +46,16 @@ pub async fn run_client(server_hex: &str, listen_addr: &str) {
 pub async fn run_client_forward(server_hex: &str, ports: Vec<ForwardedPort> ) {
     if let Some(destination) = decode_hash(server_hex).await {
         if let Some((mux, node, rx)) = connect_rns(destination).await {
-            info!("a");
             let reconnect_notify = reconnect_generator(mux.clone(), node, rx, destination).await;
 
-            info!("b");
             for port in ports {
                 match port.r#type {
                     PortType::Tcp => {
-                        tcp_tunnel(mux.clone(), reconnect_notify.clone(), port).await
+                        let notify = reconnect_notify.clone();
+                        let mux = mux.clone();
+                        tokio::spawn(async move {
+                            tcp_tunnel(mux, notify, port).await
+                        });
                     },
                     PortType::Udp => {
                         info!("c");
@@ -69,9 +67,10 @@ pub async fn run_client_forward(server_hex: &str, ports: Vec<ForwardedPort> ) {
                     }
                 }
             }
+            let __ : () =std::future::pending().await; // so main thread never ends.
             // run_sockets_proxy_handling(listen_addr, mux.clone(), reconnect_notify).await;
         }
-    } 
+    }; 
 }
 
 pub async fn decode_hash(server_hex: &str) -> Option<[u8; 16]> {
@@ -263,9 +262,8 @@ async fn dispatch_and_reconnect(
 
             match event {
                 ProxyEvent::LinkData { data, .. } => {
-                    // println!("{:?}",data);
                     for frame in mux.receive_data(&data).await {
-                        // println!("type {:?} sid: {:?}", frame.frame_type, frame.session_id);
+
                         mux.dispatch(frame).await;
                     }
                 }
@@ -363,7 +361,7 @@ pub async fn connect_tcp_server_side(
     mux: MuxHandle,
     session_rx: &mut mpsc::UnboundedReceiver<Frame>,
     target_addr: TargetAddr,)
-    -> Option<Result<(),String>>
+    -> Result<(),String>
 {
     // 
      // if let Some(socket_addr) = filter_and_convert(target_addr, None).await {
@@ -377,8 +375,6 @@ pub async fn connect_tcp_server_side(
         // Wait for CONN_OK or CONN_ERR with timeout
         tokio::time::timeout(Duration::from_secs(15), async {
             while let Some(frame) = session_rx.recv().await {
-                // println!("type: {:?}", frame.frame_type); 
-                // println!("type: {:?}", frame.session_id); 
                 match frame.frame_type {
                     FrameType::ConnectOk => return Ok(()),
                     FrameType::ConnectErr => {
@@ -389,8 +385,10 @@ pub async fn connect_tcp_server_side(
                 }
             }
             Err("channel closed".to_string())
-        })
-        .await.ok()
+        }).await.map_err(|_e| "Timeout".into()).flatten()
+        
+
+        // a.ok()
          
      // } else {
          // return None;
@@ -414,13 +412,13 @@ async fn handle_tcp_connect(
 
     info!("[{}] -> {}:{} connection result {:?}", sid, host, port, connect_result);
 
-    if let Some(_) = connect_result {
+    if let Ok(_) = connect_result {
     
         // Reply to SOCKS5 client based on RNS connection result
         let dummy_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0);
 
         let stream = match connect_result {
-            Some(Ok(())) => {
+            Ok(()) => {
                 // Connection succeeded -- send SOCKS5 success reply
                 match proto.reply_success(dummy_addr).await {
                     Ok(s) => s,
@@ -432,15 +430,9 @@ async fn handle_tcp_connect(
                     }
                 }
             }
-            Some(Err(reason)) => {
+            Err(reason) => {
                 warn!("[{}] Remote connect failed: {}", sid, reason);
                 let _ = proto.reply_error(&ReplyError::GeneralFailure).await;
-                mux.drop_session(sid).await;
-                return None;
-            }
-            None => {
-                warn!("[{}] Connect timeout", sid);
-                let _ = proto.reply_error(&ReplyError::TtlExpired).await;
                 mux.drop_session(sid).await;
                 return None;
             }
@@ -464,7 +456,7 @@ pub async fn udp_bind_connect(
     mux: MuxHandle,
     session_rx: &mut mpsc::UnboundedReceiver<Frame>,
     target_addr: TargetAddr,)
-    -> Result<Result<(),String>,Elapsed>
+    -> Result<(),String>
 {
     let (host, port) = target_addr.into_string_and_port();
 
@@ -487,8 +479,7 @@ pub async fn udp_bind_connect(
             }
         }
         Err("channel closed".to_string())
-    })
-    .await
+    }).await.map_err(|_e| "Timeout".into()).flatten()
 }
 
 async fn handle_udp_connect(
@@ -512,7 +503,7 @@ async fn handle_udp_connect(
 
 
     match connect_result {
-        Ok(Ok(())) => {
+        Ok(()) => {
             // Connection succeeded -- send SOCKS5 success reply
             match proto.reply_success(relay_address).await {
                 Ok(s) => Some((udp_stream,s)),
@@ -524,15 +515,10 @@ async fn handle_udp_connect(
                 }
             }
         }
-        Ok(Err(reason)) => {
+        Err(reason) => {
             warn!("[{}] Remote connect failed: {}", sid, reason);
+
             let _ = proto.reply_error(&ReplyError::GeneralFailure).await;
-            mux.drop_session(sid).await;
-            return None;
-        }
-        Err(_) => {
-            warn!("[{}] Connect timeout", sid);
-            let _ = proto.reply_error(&ReplyError::TtlExpired).await;
             mux.drop_session(sid).await;
             return None;
         }

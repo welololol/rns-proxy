@@ -3,15 +3,13 @@
 //! Note 1, idk where to put this but the buffer has to be bigger than 64k as v
 //! orginally was 4096 but occasionally there would be packets
 
-use std::net::{Ipv4Addr, ToSocketAddrs};
-use std::os::unix::net::SocketAddr;
-use std::str::SplitWhitespace;
+use std::net::Ipv4Addr;
 use std::sync::Arc;
-use std::time::Duration;
+
  
 use fast_socks5::{new_udp_header, parse_udp_request};
-use fast_socks5::util::target_addr::{TargetAddr, ToTargetAddr};
-use log::{debug, error, info, warn};
+use fast_socks5::util::target_addr::ToTargetAddr;
+use log::{debug, warn};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::{Mutex, mpsc};
 use udp_stream::UdpStream;
@@ -33,7 +31,7 @@ pub async fn relay_bidirectional_tcp(
     let mux_fwd = mux.clone();
 
 
-    info!("[{}] relay", sid);
+    debug!("[{}] relay bidirectional tcp", sid);
 
     // TCP -> RNS
     let tcp_to_rns = tokio::spawn(async move {
@@ -65,6 +63,7 @@ pub async fn relay_bidirectional_tcp(
                     }
                 }
                 FrameType::Close => break,
+                FrameType::ConnectErr => {warn!("connection errored, should probably be handled by different code"); break},
                 _ => {}
             }
         }
@@ -75,7 +74,7 @@ pub async fn relay_bidirectional_tcp(
         _ = rns_to_tcp => {},
     }
 
-    info!("[{}] drop connection", sid);
+    debug!("[{}] drop connection", sid);
 
     mux.send(FrameType::Close, sid, Vec::new()).await;
     mux.drop_session(sid).await;
@@ -258,7 +257,7 @@ pub async fn relay_bidirectional_udp_server_side(
                 match frame.frame_type {
                     FrameType::Data => {
                         match parse_udp_request(&*frame.payload).await {
-                            Ok((frag,addr,data)) => {
+                            Ok((_frag,addr,data)) => {
                                 
 
                                 if let Some(socket) = filter_and_convert(addr.clone(), Some(&config2)).await {
@@ -327,6 +326,8 @@ pub async fn relay_forwarded_tcp(
     let (mut tcp_read, mut tcp_write) = stream.into_split();
     let mux_fwd = mux.clone();
 
+    debug!("relay forwarded tcp");
+
     // TCP -> RNS
     let tcp_to_rns = tokio::spawn(async move {
         let mut buf = [0u8; 4096];
@@ -358,6 +359,7 @@ pub async fn relay_forwarded_tcp(
                     }
                 }
                 FrameType::Close => break,
+                FrameType::ConnectErr => {warn!("connection errored, should probably be handled by different code"); break},
                 _ => {}
             }
         }
@@ -368,6 +370,7 @@ pub async fn relay_forwarded_tcp(
         _ = rns_to_tcp => {},
     }
 
+    debug!("[{}] tcp relay ended", sid);
     mux.send(FrameType::Close, sid, Vec::new()).await;
     mux.drop_session(sid).await;
 }
@@ -415,8 +418,8 @@ pub async fn relay_forwarded_udp(
                 FrameType::Data => {
                     
                     match parse_udp_request(&*frame.payload).await {
-                        Ok((frag,addr,data)) => {
-                            let target  = addr.into_string_and_port();
+                        Ok((_frag,_addr,data)) => {
+                            // let target  = addr.into_string_and_port();
                 
                             if let Err(e) = udp_write.write_all(data).await {
                                 warn!("[{}] UDP write error: {}", sid, e);
@@ -447,6 +450,7 @@ pub async fn relay_forwarded_udp(
         _ = rns_to_tcp => {},
     }
 
+    debug!("[{}] udp relay ended", sid);
     mux.send(FrameType::Close, sid, Vec::new()).await;
     mux.drop_session(sid).await;
 }

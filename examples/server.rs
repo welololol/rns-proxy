@@ -32,6 +32,7 @@ async fn main() {
 
     match cli.command {
         Commands::Server { identity_file } => {
+            drop(identity_file);
             eprintln!("Starting RNS SOCKS5 proxy server...");
             eprintln!("Make sure rnsd is running (pip install rns && rnsd)");
             eprintln!();

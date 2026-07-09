@@ -47,7 +47,6 @@ async fn main() {
         Commands::Connect { destination, tcp_port, udp_port, both_port} => {
 
             let ports_to_connect = connect_vec_merging_connect(tcp_port, udp_port, both_port);
-            println!("{:?}",ports_to_connect);
             run_client_forward(&destination, ports_to_connect).await;
             // rns_proxy::server::run_server(identity_file.as_deref()).await;
         }

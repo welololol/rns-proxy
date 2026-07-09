@@ -168,7 +168,6 @@ pub async fn run_server(identity_path: Option<&str>, filter_config: FilterConfig
                         FrameType::Connect => {
                             let sid = frame.session_id;
                             if let Some((host, port,udp)) = decode_connect_payload(&frame.payload) {
-                                info!("[{}] -> {}:{} {}", sid, host, port, udp);
                                 let addr = TargetAddr::Domain(host, port); 
                                 let session_rx = mux.register_session(sid).await;
                                 let mux_clone = mux.clone();
@@ -216,9 +215,7 @@ async fn handle_server_session_tcp(
     filter_config: FilterConfig
 ) {
 
-    info!("{} start", sid);
     if let Some(socket) = filter_and_convert(addr.clone(), Some(&filter_config)).await {
-        info!("{} hi", sid);
         let stream = match TcpStream::connect(socket).await {
             Ok(s) => s,
             Err(e) => {
@@ -228,13 +225,12 @@ async fn handle_server_session_tcp(
                 return;
             }
         };
-        info!("{} how it went {:?}", sid ,stream);
 
         // Signal success
         mux.send(FrameType::ConnectOk, sid, Vec::new()).await;
 
         // Data relay (shared implementation)
-        info!("{} streaming", sid);
+        info!("[{}] streaming", sid);
         relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
         info!("[{}] TCP Closed", sid);
     } else {
@@ -250,7 +246,7 @@ async fn handle_server_session_tcp(
 /// Handle a single proxied UDP session on the server side.
 async fn handle_server_session_udp(
     sid: u32,
-    target_addr: TargetAddr,
+    _target_addr: TargetAddr,
     mux: MuxHandle,
     session_rx: mpsc::UnboundedReceiver<Frame>,
     filter_config: FilterConfig

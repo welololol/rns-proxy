@@ -15,14 +15,12 @@
 //! in rns-rs, causing `NotReady` errors after the first 2 messages.
 
 use std::collections::HashMap;
-use std::error;
 use std::sync::Arc;
 use tokio::sync::{Mutex};
 
-use log::{debug, error, info, warn};
+use log::{debug, error, warn};
 use rns_core::constants::LINK_MDU;
-use rns_core::msgpack::Error;
-use rns_net::{LinkId, LocalServerFactory, RnsNode};
+use rns_net::{LinkId,  RnsNode};
 use tokio::sync::mpsc;
 
 use crate::frame::FrameDecodeState::{DecodingFailed,  MoreDataRequired};
@@ -41,7 +39,7 @@ pub struct MuxHandle {
 struct MuxInner {
     node: Arc<RnsNode>,
     link_id: Mutex<Option<LinkId>>,
-    sessions: Mutex<HashMap<u32, mpsc::UnboundedSender<Frame>>>,
+    sessions: Mutex<HashMap<u32, tokio::sync::mpsc::UnboundedSender<Frame>>>,
     next_sid: Mutex<u32>,
     /// Reassembly buffer for incoming raw link data chunks.
     recv_buf: Mutex<Vec<u8>>,
@@ -87,7 +85,7 @@ impl MuxHandle {
 
     /// Get the next session id.
     pub async fn next_session_id(&self) -> u32 {
-        let mut sid = (self.inner.next_sid.lock().await);
+        let mut sid = self.inner.next_sid.lock().await;
         *sid = sid.wrapping_add(1);
         *sid
     }
@@ -152,8 +150,11 @@ impl MuxHandle {
 
         let sessions = self.inner.sessions.lock().await;
         if let Some(tx) = sessions.get(&sid) {
+            // info!("hi");
             if tx.send(frame).is_err() {
-                debug!("Session {} channel closed", sid);
+                // debug!("Session {} channel closed", sid);
+            } else {
+                // info!("fine?");
             }
         } else {
             warn!("No session {} for frame type {}", sid, ft);

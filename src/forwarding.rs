@@ -22,7 +22,7 @@ use std::{net::{Ipv4Addr, SocketAddr}, sync::Arc};
 
 use fast_socks5::util::target_addr::TargetAddr;
 use log::{error, info, warn};
-use tokio::{net::{TcpListener, UdpSocket}, sync::{Notify, mpsc::{UnboundedReceiver, UnboundedSender, channel, unbounded_channel}}};
+use tokio::{net::{TcpListener}, sync::Notify, };
 use udp_stream::UdpListener;
 
 use crate::{client::{connect_tcp_server_side, udp_bind_connect}, mux::MuxHandle, relay::{relay_forwarded_tcp, relay_forwarded_udp}};
@@ -54,7 +54,7 @@ pub async fn tcp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: Fo
     let listener = match TcpListener::bind(format!("127.0.0.1:{}",port.client_port)).await {
         Ok(l) => l,
         Err(e) => {
-            error!("Failed to local port at {}", port.client_port);
+            error!("Failed to local port at {} cause of {:?}", port.client_port, e);
             return;
         }
     };
@@ -65,9 +65,9 @@ pub async fn tcp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: Fo
     loop {
         tokio::select! {
             accept_result = listener.accept() => {
-                let (stream, addr) = match accept_result {
+                let (stream, _addr) = match accept_result {
                     Ok(sa) => sa,
-                    Err(e) => {
+                    Err(_e) => {
                         continue;
                     }
                 };
@@ -84,8 +84,13 @@ pub async fn tcp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: Fo
                 let target_addr = TargetAddr::Ip(SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), port.server_port)); // ask for any port client server side
 
                 tokio::spawn(async move {
-                    if let Some(_) = connect_tcp_server_side(sid,  mux.clone(), &mut session_rx, target_addr ).await {
-                        relay_forwarded_tcp(sid, stream, mux_clone, session_rx).await;
+                    match connect_tcp_server_side(sid,  mux.clone(), &mut session_rx, target_addr ).await {
+                        Ok(()) => {
+                            relay_forwarded_tcp(sid, stream, mux_clone, session_rx).await;
+                        }
+                        Err(error_message) => {
+                            warn!("[{}] could not connect forward cause of {}", sid, error_message);
+                        }
                     }
                 });
             }
@@ -108,48 +113,37 @@ pub async fn udp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: Fo
     let target_addr = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), port.client_port);
     let listener = match UdpListener::bind(target_addr).await {
         Ok(l) => l,
-        Err(e) => {
+        Err(_e) => {
             error!("Failed to local port at {}", port.client_port);
             return;
         }
     };
-
-                    info!("d");
 
     let reference = &mux;
 
     loop {
         tokio::select! {
             accept_result = listener.accept() => {
-                let (stream, addr) = match accept_result {
+                let (stream, _addr) = match accept_result {
                     Ok(sa) => sa,
-                    Err(e) => {
-                        info!("hi");
+                    Err(_e) => {
                         continue;
                     }
                 };
-                    info!("5");
                 let mux = reference.clone();
-                info!("1");
                 if !mux.is_connected().await {
                     drop(stream);
                     continue;
                 }
-                info!("2");
 
                 let sid = mux.next_session_id().await;
-                info!("2");
                 let mut session_rx = mux.register_session(sid).await;
-                info!("2");
                 let mux_clone = mux.clone();
-                info!("2");
 
-                info!("2");
                 // let connect_result = udp_bind_connect(sid,mux.clone(), &mut session_rx, target_addr).await;
 
                 let target_addr = TargetAddr::Ip(SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), port.server_port ));
 
-                info!("3");
                 tokio::spawn(async move {
                     if let Ok(_) = udp_bind_connect(sid,  mux.clone(), &mut session_rx, target_addr ).await {
                         relay_forwarded_udp(sid, stream, mux_clone, session_rx, port.server_port).await;
