@@ -241,6 +241,7 @@ async fn handle_server_session_tcp(
         warn!("[{}] invalid ip address: {:?}", sid,  &addr);
         mux.send(FrameType::ConnectErr, sid, "invalid ip address".to_string().into_bytes()).await;
         mux.drop_session(sid).await;
+        warn!("should have dropped by now");
         return;
     }
     // Attempt TCP connection
