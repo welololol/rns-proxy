@@ -168,6 +168,7 @@ pub async fn run_server(identity_path: Option<&str>, filter_config: FilterConfig
                         FrameType::Connect => {
                             let sid = frame.session_id;
                             if let Some((host, port,udp)) = decode_connect_payload(&frame.payload) {
+                                info!("[{}] -> {}:{} tcp", sid, &host, port);
                                 let addr = TargetAddr::Domain(host, port); 
                                 let session_rx = mux.register_session(sid).await;
                                 let mux_clone = mux.clone();
@@ -230,7 +231,7 @@ async fn handle_server_session_tcp(
         mux.send(FrameType::ConnectOk, sid, Vec::new()).await;
 
         // Data relay (shared implementation)
-        info!("[{}] streaming", sid);
+        // info!("[{}] streaming", sid);
         relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
         info!("[{}] TCP Closed", sid);
     } else {
