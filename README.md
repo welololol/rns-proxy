@@ -1,6 +1,7 @@
 # rns-proxy
 
-> **Disclaimer:** This project is relatively new and may have security issues especially when run as a server.
+> **Disclaimer:** This project is relatively new and may have security issues especially when run as a server, make sure to firewall your network
+> This project may be incompatiable with older versions of itself as it is still being currently developed
 
 SOCKS5 proxy that tunnels TCP connections and UDP packets over the [Reticulum Network Stack](https://reticulum.network/). Route arbitrary TCP/UDP traffic through Reticulum's encrypted, delay-tolerant mesh network using the standard SOCKS5 protocol.
 
