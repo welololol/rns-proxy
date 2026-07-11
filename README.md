@@ -1,10 +1,8 @@
 # rns-proxy
 
-> **Disclaimer:** This project was created for academic and research purposes
-> only. It is not production-ready and should not be used in environments where
-> stability, security, or reliability are required.
+> **Disclaimer:** This project is relatively new and may have security issues especially when run as a server.
 
-SOCKS5 proxy that tunnels TCP connections over the [Reticulum Network Stack](https://reticulum.network/). Route arbitrary TCP traffic through Reticulum's encrypted, delay-tolerant mesh network using the standard SOCKS5 protocol.
+SOCKS5 proxy that tunnels TCP connections and UDP packets over the [Reticulum Network Stack](https://reticulum.network/). Route arbitrary TCP/UDP traffic through Reticulum's encrypted, delay-tolerant mesh network using the standard SOCKS5 protocol.
 
 ## How it works
 
@@ -42,14 +40,25 @@ sequenceDiagram
     Note over Client,Server: Frame(CLOSE, sid) ends the session
 ```
 
-The project consists of two components:
 
-- **Server** (exit node) -- registers on the RNS network, accepts incoming links, and proxies TCP connections to target hosts
+The project consists of two main components:
+
+- **Server** (exit node) -- registers on the RNS network, accepts incoming links, and proxies TCP connections to target hosts as well as forwarding UDP traffic
 - **Client** (local proxy) -- runs a local SOCKS5 server, multiplexes all connections through a single encrypted RNS link to the server
 
-All TCP sessions are multiplexed over one RNS link using a custom binary frame protocol. Frames larger than `LINK_MDU` are automatically chunked on send and reassembled on receive.
+As well as two additional wrappers around the socksv5 proxy:
+
+- **Forward** (server) -- registers on the RNS network a socksv5 proxy that only accepts requests to the specified ports on localhost
+- **Connect** (client) -- opens ports on localhost and forwards all traffic sent to the port to the reticulum server through a SOCKS5 proxy to that server's localhost ports, allowing non-SOCKS5 applications to work through reticulum pointing them at a localhost port.
+
+All TCP and UDP sessions are multiplexed over one RNS link using a custom binary frame protocol. Frames larger than `LINK_MDU` are automatically chunked on send and reassembled on receive.
 
 The client handles automatic reconnection when the link or underlying transport is lost, with exponential backoff and full RNS node recreation after repeated failures.
+
+
+### UDP
+
+Currently UDP is tunneled over the network using a link destination along with TCP, meaning that UDP is currently ordered, reliable unnecessarily which increases latency. This may be changed in the future.
 
 ## Build
 
