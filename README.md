@@ -59,7 +59,7 @@ The client handles automatic reconnection when the link or underlying transport 
 
 ### UDP
 
-Currently UDP is tunneled over the network using a link destination along with TCP, meaning that UDP is currently ordered, reliable unnecessarily which increases latency. This may be changed in the future.
+Currently UDP is tunneled over the network using a link destination along with TCP, meaning that UDP is currently ordered and reliable unnecessarily which increases latency. This may be changed in the future.
 
 ## Build
 
