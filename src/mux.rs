@@ -169,6 +169,7 @@ impl MuxHandle {
         let mut buf = self.inner.recv_buf.lock().await;
         buf.extend_from_slice(data);
         // info!("buf: {:?}", buf);
+        let buf_clone = buf.clone();
 
         let mut frames = Vec::new();
         loop {
@@ -194,8 +195,9 @@ impl MuxHandle {
                         DecodingFailed => {
                             // something has gone really wrong, just clear the buffer and hope things
                             // work out.
-                            error!("decoding failed for a packet, something really bad is happening {:?}",buf);
-                            error!("ignoring packet buffer and hoping that will fix it");
+                            error!("decoding failed for a packet, something really bad is happening buf: {:?} data: {:?}",buf, data);
+                            error!("original buf {:?}", buf_clone);
+                            error!("abort to avoid corrupting the stream:");
                             assert!(false);
                             buf.drain(..);
                             break;
