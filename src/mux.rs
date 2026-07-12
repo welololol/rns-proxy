@@ -148,8 +148,8 @@ impl MuxHandle {
     /// multiple different sids from sending at the same time and scrambling packets
     pub async fn send_frame(&self, frame: &Frame) {
         let encoded = frame.encode();
-
-        info!("test print {:?}", self.inner.data_sender_buf.send(encoded));
+        self.inner.data_sender_buf.send(encoded);
+        // info!("test print {:?}", self.inner.data_sender_buf.send(encoded));
 
     }
 
