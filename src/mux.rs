@@ -18,10 +18,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex};
 
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
 use rns_core::constants::LINK_MDU;
 use rns_net::{LinkId,  RnsNode};
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use crate::frame::FrameDecodeState::{DecodingFailed,  MoreDataRequired};
 use crate::{Frame, FrameType};
@@ -36,25 +36,61 @@ pub struct MuxHandle {
     inner: Arc<MuxInner>,
 }
 
+// #[ignore(unused_attributes)]
 struct MuxInner {
     node: Arc<RnsNode>,
-    link_id: Mutex<Option<LinkId>>,
+    link_id: Arc<Mutex<Option<LinkId>>>,
     sessions: Mutex<HashMap<u32, tokio::sync::mpsc::UnboundedSender<Frame>>>,
     next_sid: Mutex<u32>,
     /// Reassembly buffer for incoming raw link data chunks.
     recv_buf: Mutex<Vec<u8>>,
+    data_sender_buf: Arc<UnboundedSender<Vec<u8>>>,
 }
+
+// allows for sending things faster cause it's on a different thread and makes sure everything ends up in order.
+pub fn run_link_sender(node: Arc<RnsNode>, link_id: Arc<Mutex<Option<LinkId>>>) -> UnboundedSender<Vec<u8>> {
+    let (sender,mut receiver): (UnboundedSender<Vec<u8>>, UnboundedReceiver<Vec<u8>>) = unbounded_channel();
+
+    tokio::spawn(async move {
+        while let Some(data_frame) = receiver.recv().await {
+            let lock = link_id.lock().await;
+            let value = &*(lock);
+            let link_id = match value {
+                Some(id) => id,
+                None => {
+                    warn!("send_frame: no active link, dropping frame");
+                    return;
+                }
+            };
+
+            for chunk in data_frame.chunks(LINK_MDU) {
+                if let Err(e) = node.send_on_link(link_id.0, chunk.to_vec(), DATA_CONTEXT) {
+                    warn!("Failed to send link data: {:?}", e);
+                    return;
+                }
+            }
+            
+        }
+    });
+
+
+    return sender;
+}
+
+
 
 impl MuxHandle {
     /// Create a new multiplexer handle.
     pub fn new(node: Arc<RnsNode>) -> Self {
+        let link_id = Arc::new(Mutex::new(None));
         Self {
             inner: Arc::new(MuxInner {
-                node,
-                link_id: Mutex::new(None),
+                node: node.clone(),
+                link_id: link_id.clone(),
                 sessions: Mutex::new(HashMap::new()),
                 next_sid: Mutex::new(0),
                 recv_buf: Mutex::new(Vec::new()),
+                data_sender_buf: Arc::new(run_link_sender(node.clone(), link_id))
             }),
         }
     }
@@ -113,28 +149,8 @@ impl MuxHandle {
     pub async fn send_frame(&self, frame: &Frame) {
         let encoded = frame.encode();
 
-        let lock = self.inner.link_id.lock().await;
-        let value = &*(lock);
-        let link_id = match value {
-            Some(id) => id,
-            None => {
-                debug!("send_frame: no active link, dropping frame");
-                return;
-            }
-        };
+        info!("test print {:?}", self.inner.data_sender_buf.send(encoded));
 
-        let node = &self.inner.node;
-
-        // Send in LINK_MDU-sized chunks
-
-        for chunk in encoded.chunks(LINK_MDU) {
-            // println!("chunk: {:?} sid: {}",chunk, frame.session_id);
-            if let Err(e) = node.send_on_link(link_id.0, chunk.to_vec(), DATA_CONTEXT) {
-                warn!("Failed to send link data: {:?}", e);
-                return;
-            }
-        }
-        drop(lock);
     }
 
     /// Convenience: send a typed frame.
