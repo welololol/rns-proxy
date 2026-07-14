@@ -8,15 +8,12 @@
 //! you send to it get forwarded to the remote server to the remote socket. allowing you to directly
 //! connect an application to that port and have it be connected to the remote server.
 //!
-//! rns-proxy open-port -U 43 -u 80 443
-//! rns-proxy forward -U 43:43 -u 80:80 443:443
+//! rns-proxy forward -u 43 -t 80 
+//! rns-proxy connect -U 43:43 -u 80:80 443:443
 //!
-//! rns-proxy open-port/forward by default only forwards/connects to tcp
-//! -u flag attempts does both udp and tcp
-//! -U flag means udp only
-//!
-//!
-//! 
+//! -t flag means onyl tcp is connected to
+//! -u flag means udp only
+//! -b flag attempts does both udp and tcp
 
 use std::{net::{Ipv4Addr, SocketAddr}, sync::Arc};
 
@@ -31,7 +28,7 @@ use crate::{client::{connect_tcp_server_side, udp_bind_connect}, mux::MuxHandle,
 pub enum PortType {
     Tcp,
     Udp,
-    TcpUdp, // both
+    TcpUdp, 
 }
 
 #[derive(Clone, Debug)]

@@ -453,11 +453,10 @@ async fn handle_tcp_connect(
             }
         };
 
+        _=stream.set_nodelay(true); // slightly more overhead but this means slightly less delay and the tcp stream is less slightly to time out.
 
         info!("[{}] - > {}:{}, fully connected to", sid, host, port);
 
-        // Data relay (shared implementation)
-        // relay_bidirectional_tcp(sid, stream, mux, session_rx).await;
         return Some(stream)
     } else {
         return None;

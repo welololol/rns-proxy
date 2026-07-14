@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex};
 
-use log::{debug, error, info, warn};
+use log::{error, info, warn};
 use rns_core::constants::LINK_MDU;
 use rns_net::{LinkId,  RnsNode};
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender, unbounded_channel};
@@ -38,7 +38,7 @@ pub struct MuxHandle {
 
 // #[ignore(unused_attributes)]
 struct MuxInner {
-    node: Arc<RnsNode>,
+    _node: Arc<RnsNode>, // we migth use this someday but right now the run_link_sender thread is the only thing that uses it.
     link_id: Arc<Mutex<Option<LinkId>>>,
     sessions: Mutex<HashMap<u32, tokio::sync::mpsc::UnboundedSender<Frame>>>,
     next_sid: Mutex<u32>,
@@ -85,7 +85,7 @@ impl MuxHandle {
         let link_id = Arc::new(Mutex::new(None));
         Self {
             inner: Arc::new(MuxInner {
-                node: node.clone(),
+                _node: node.clone(),
                 link_id: link_id.clone(),
                 sessions: Mutex::new(HashMap::new()),
                 next_sid: Mutex::new(0),
@@ -148,8 +148,8 @@ impl MuxHandle {
     /// multiple different sids from sending at the same time and scrambling packets
     pub async fn send_frame(&self, frame: &Frame) {
         let encoded = frame.encode();
-        self.inner.data_sender_buf.send(encoded);
-        // info!("test print {:?}", self.inner.data_sender_buf.send(encoded));
+        _=self.inner.data_sender_buf.send(encoded);
+        // pretty much should never error so we don't care.
 
     }
 

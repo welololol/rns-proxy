@@ -34,33 +34,42 @@ pub enum Commands {
         #[arg(short, long, default_value = "127.0.0.1:1080")]
         listen: String,
     },
+    /// Connects to localhost ports of the server (Port forwarding)
     Connect  {
+        /// RNS destination hash (hex)
         #[arg(short, long)]
         destination: String,
 
-        // server to client ports.
+        /// connects udp ports, can be specified as just the port number or as SERVER_PORT:CLIENT_PORT. Multiple of this flag can be specified
         #[arg(short, long, value_parser = port_parser)]
         udp_port: Vec<(u16,u16)>,
 
+        /// connectcs tcp ports, can be specified as just the port number or as SERVER_PORT:CLIENT_PORT. Multiple of this flag can be specified
         #[arg(short, long, value_parser = port_parser)]
         tcp_port: Vec<(u16,u16)>,
 
+        /// shorthand for connecting to both udp and tcp, can be specified as just the port number or as SERVER_PORT:CLIENT_PORT. Multiple of this flag can be specified
         #[arg(short, long, value_parser = port_parser)]
         both_port: Vec<(u16,u16)>, // both udp and tcp
     },
+    /// Exposes a SOCKS5 proxy that only allows clients to connect to specified localhost ports.
     Forward  {
         #[arg(long, value_name = "PATH")]
+        /// Path to the identity file for persistent server address.
+        /// Defaults to ~/.reticulum/rns_proxy_identity
         identity_file: Option<String>,
 
         #[arg(short, long)]
+        /// allow connecting to localhost udp port for any client accessing this destination. Multiple of this flag can be specified
         udp_port: Vec<u16>,
 
         #[arg(short, long)]
+        /// allow connecting to localhost tcp port for any client accessing this destination. Multiple of this flag can be specified
         tcp_port: Vec<u16>,
 
         #[arg(short, long)]
-        both_port: Vec<u16>, // both udp and tcp
-    }
+        /// allow connecting to localhost tcp and udp port for any client accessing this destination. Multiple of this flag can be specified 
+        both_port: Vec<u16>,    }
 }
 
 

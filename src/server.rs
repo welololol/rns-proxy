@@ -227,6 +227,7 @@ async fn handle_server_session_tcp(
             }
         };
 
+        _=stream.set_nodelay(true); // we can spare the overhead for less delay RNS side cause it's already not great.
         // Signal success
         mux.send(FrameType::ConnectOk, sid, Vec::new()).await;
 
