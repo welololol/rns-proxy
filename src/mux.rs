@@ -173,7 +173,7 @@ impl MuxHandle {
                 // info!("fine?");
             }
         } else {
-            warn!("No session {} for frame type {}", sid, ft);
+            info!("No session {} for frame type {}", sid, ft);
         }
     }
 
