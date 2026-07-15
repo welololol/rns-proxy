@@ -388,7 +388,7 @@ pub async fn connect_tcp_server_side(
         mux.send(FrameType::Connect, sid, connect_payload).await;
 
         // Wait for CONN_OK or CONN_ERR with timeout
-        tokio::time::timeout(Duration::from_secs(15), async {
+        tokio::time::timeout(Duration::from_secs(60), async {
             while let Some(frame) = session_rx.recv().await {
                 match frame.frame_type {
                     FrameType::ConnectOk => return Ok(()),
@@ -481,7 +481,7 @@ pub async fn udp_bind_connect(
     mux.send(FrameType::Connect, sid, connect_payload).await;
 
     // Wait for CONN_OK or CONN_ERR with timeout
-    tokio::time::timeout(Duration::from_secs(15), async {
+    tokio::time::timeout(Duration::from_secs(60), async {
         while let Some(frame) = session_rx.recv().await {
             match frame.frame_type {
                 FrameType::ConnectOk => return Ok(()),

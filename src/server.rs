@@ -81,8 +81,7 @@ pub async fn run_server(identity_path: Option<&str>, filter_config: FilterConfig
     let sig_prv: [u8; 32] = prv_key[32..64].try_into().unwrap();
     let sig_pub: [u8; 32] = pub_key[32..64].try_into().unwrap();
 
-    info!("Server address (stable across restarts):");
-    info!("  {}", hex::encode(dest_hash));
+    info!("Server address (stable across restarts): {}", hex::encode(dest_hash) );
 
     let (node, mut rx) = match create_node() {
         Ok(v) => v,
