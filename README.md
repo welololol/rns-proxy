@@ -106,6 +106,16 @@ Server started. Client address:
   <32-hex-char-destination-hash>
 ```
 
+#### Connect
+
+To start a exit node that can only connect to certain localhost ports, you can instead do
+
+```bash
+rns-proxy forward -t 80 -u 23 -b 65000
+```
+
+which will forward tcp port 80, udp port 23 and forward both the tcp and udp ports of 65000. Any amount of ports can be specified.
+
 ### Start the client
 
 On the local machine:
@@ -126,13 +136,28 @@ To make the proxy accessible from other devices on the network:
 rns-proxy client -d <hash-from-server> -l 0.0.0.0:1080
 ```
 
-### Use it
+#### Use it
 
 Configure any application to use `127.0.0.1:1080` as a SOCKS5 proxy:
 
 ```bash
 curl --socks5 127.0.0.1:1080 https://example.com
 ```
+
+#### Connect
+
+Connect to the localhost ports of the server and port forward it to your own localhost port.
+
+```bash
+rns-proxy connect -d <hash-from-server> -t 7657
+```
+
+You can also choose what client port instead of defaulting to the server's with a colon followed by the port number that should be opened
+
+```bash
+rns-proxy connect -d <hash-from-server> -t 7657:5601
+```
+
 
 ## CLI
 
@@ -142,33 +167,14 @@ rns-proxy [OPTIONS] <COMMAND>
 Commands:
   server   Run the proxy server (exit node)
   client   Run the proxy client (local SOCKS5)
+  connect  Connects to the localhost ports of the server (Port forwarding)
+  forward  Exposes a SOCKS5 proxy that only allows clients to connect to the specified localhost ports.
 
 Options:
   --debug           Enable debug logging
   -V, --version     Print version
   -h, --help        Print help
 ```
-
-**Server options:**
-
-```
-rns-proxy server [--identity-file <PATH>]
-```
-
-| Option | Default | Description |
-|---|---|---|
-| `--identity-file` | `~/.reticulum/rns_proxy_identity` | Path to the persistent identity file |
-
-**Client options:**
-
-```
-rns-proxy client -d <HASH> [-l 127.0.0.1:1080]
-```
-
-| Option | Default | Description |
-|---|---|---|
-| `-d`, `--destination` | required | RNS destination hash (hex) |
-| `-l`, `--listen` | `127.0.0.1:1080` | Local SOCKS5 listen address |
 
 ## Protocol
 
