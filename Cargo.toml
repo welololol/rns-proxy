@@ -18,8 +18,8 @@ fast-socks5 = "1.0"
 hex = "0.4"
 udp-stream = "0.0.12"
 
-rns-net =  "0.6"
-rns-core = "0.1"
+rns-net =  "0.6.1"
+rns-core = "0.1.15"
 rns-crypto = "0.1.8"
 prse = "1.2.1"
 
