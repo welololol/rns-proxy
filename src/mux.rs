@@ -118,6 +118,11 @@ impl MuxHandle {
         (self.inner.link_id.lock().await).is_some()
     }
 
+    /// Check whether an event belongs to this mux's active RNS link.
+    pub async fn is_link(&self, link_id: LinkId) -> bool {
+        *self.inner.link_id.lock().await == Some(link_id)
+    }
+
     /// Get the next session id.
     pub async fn next_session_id(&self) -> u32 {
         let mut sid = self.inner.next_sid.lock().await;

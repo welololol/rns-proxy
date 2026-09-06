@@ -470,12 +470,24 @@ async fn dispatch_and_reconnect(
             };
 
             match event {
-                ProxyEvent::LinkData { data, .. } => {
+                ProxyEvent::LinkData { link_id, data } => {
+                    // A shared RNS node can receive data for other links
+                    // owned by the same process. Only decode frames from the
+                    // link associated with this mux; foreign link payloads
+                    // are arbitrary bytes and would poison recv_buf.
+                    if !mux.is_link(link_id).await {
+                        debug!("Ignoring data from unrelated RNS link {}", link_id);
+                        continue;
+                    }
                     for frame in mux.receive_data(&data).await {
                         mux.dispatch(frame).await;
                     }
                 }
                 ProxyEvent::LinkClosed { link_id, reason } => {
+                    if !mux.is_link(link_id).await {
+                        debug!("Ignoring close for unrelated RNS link {}", link_id);
+                        continue;
+                    }
                     warn!("Connection lost (link={}, reason={:?})", link_id, reason);
                     mux.reset().await;
                     break; // Exit dispatch loop to reconnect
