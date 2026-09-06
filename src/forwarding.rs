@@ -8,34 +8,41 @@
 //! you send to it get forwarded to the remote server to the remote socket. allowing you to directly
 //! connect an application to that port and have it be connected to the remote server.
 //!
-//! rns-proxy forward -u 43 -t 80 
+//! rns-proxy forward -u 43 -t 80
 //! rns-proxy connect -U 43:43 -u 80:80 443:443
 //!
 //! -t flag means onyl tcp is connected to
 //! -u flag means udp only
 //! -b flag attempts does both udp and tcp
 
-use std::{net::{Ipv4Addr, SocketAddr}, sync::Arc};
+use std::{
+    net::{Ipv4Addr, SocketAddr},
+    sync::Arc,
+};
 
 use fast_socks5::util::target_addr::TargetAddr;
 use log::{error, info, warn};
-use tokio::{net::{TcpListener}, sync::Notify, };
+use tokio::{net::TcpListener, sync::Notify};
 use udp_stream::UdpListener;
 
-use crate::{client::{connect_tcp_server_side, udp_bind_connect}, mux::MuxHandle, relay::{relay_forwarded_tcp, relay_forwarded_udp}};
+use crate::{
+    client::{connect_tcp_server_side, udp_bind_connect},
+    mux::MuxHandle,
+    relay::{relay_forwarded_tcp, relay_forwarded_udp},
+};
 
 #[derive(Clone, Debug)]
 pub enum PortType {
     Tcp,
     Udp,
-    TcpUdp, 
+    TcpUdp,
 }
 
 #[derive(Clone, Debug)]
 pub struct ForwardedPort {
     pub server_port: u16,
     pub client_port: u16,
-    pub r#type: PortType
+    pub r#type: PortType,
 }
 
 /// basically:
@@ -47,15 +54,17 @@ pub struct ForwardedPort {
 /// and any time we receive data we figure out which stream it corresponds to and send it back
 ///
 ///
-pub async fn tcp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: ForwardedPort) {
-    let listener = match TcpListener::bind(format!("127.0.0.1:{}",port.client_port)).await {
+pub async fn tcp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify>, port: ForwardedPort) {
+    let listener = match TcpListener::bind(format!("127.0.0.1:{}", port.client_port)).await {
         Ok(l) => l,
         Err(e) => {
-            error!("Failed to local port at {} cause of {:?}", port.client_port, e);
+            error!(
+                "Failed to local port at {} cause of {:?}",
+                port.client_port, e
+            );
             return;
         }
     };
-
 
     let reference = &mux;
 
@@ -106,7 +115,7 @@ pub async fn tcp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: Fo
 /// till we disconnect the RNS link or we end the program, so we therotically could run out of
 /// udp ports server side. Not really that much of a concern cause we should have a server side
 /// limit anyways.
-pub async fn udp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify> , port: ForwardedPort) {
+pub async fn udp_tunnel(mux: MuxHandle, reconnect_notify: Arc<Notify>, port: ForwardedPort) {
     let target_addr = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), port.client_port);
     let listener = match UdpListener::bind(target_addr).await {
         Ok(l) => l,

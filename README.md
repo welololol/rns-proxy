@@ -46,6 +46,8 @@ The project consists of two main components:
 
 - **Server** (exit node) -- registers on the RNS network, accepts incoming links, and proxies TCP connections to target hosts as well as forwarding UDP traffic
 - **Client** (local proxy) -- runs a local SOCKS5 server, multiplexes all connections through a single encrypted RNS link to the server
+- **Router** (local multi-destination proxy) -- keeps one listener running and selects/reuses an RNS link from each `.lmxf` hostname
+- **TUN** (system network interface) -- routes `.lmxf` traffic without per-application proxy configuration
 
 As well as two additional wrappers around the socksv5 proxy:
 
@@ -144,6 +146,50 @@ Configure any application to use `127.0.0.1:1080` as a SOCKS5 proxy:
 curl --socks5 127.0.0.1:1080 https://example.com
 ```
 
+### Multi-destination LMXF router
+
+Run one local SOCKS5 listener that can switch RNS destinations per connection:
+
+```bash
+rns-proxy router
+```
+
+Use a bare destination address to reach a service on the remote node:
+
+```text
+<32-hex-destination>.lmxf:25565
+```
+
+Or put the target hostname before the destination:
+
+```text
+minecraft.<32-hex-destination>.lmxf:25565
+```
+
+The router caches one multiplexed link per destination and reconnects it
+automatically. Configure the browser or application to use
+`127.0.0.1:1080` as a SOCKS5 proxy. A true OS-level TUN interface is not yet
+provided; applications that cannot use SOCKS5 still need a platform-specific
+TUN/transparent-routing integration.
+
+The same destination can be represented as a bookmark/integration URI:
+
+```text
+rns://<32-hex-destination>/localhost:25565
+```
+
+### Automatic TUN mode
+
+On Linux, TUN mode creates a system interface and configures split DNS for
+`.lmxf`, so browsers, Minecraft, and other applications do not need SOCKS5
+settings:
+
+```bash
+sudo target/release/rns-proxy tun
+```
+
+Stop it with `Ctrl-C`; the interface DNS configuration is reverted on exit.
+
 #### Connect
 
 Connect to the localhost ports of the server and port forward it to your own localhost port.
@@ -167,6 +213,8 @@ rns-proxy [OPTIONS] <COMMAND>
 Commands:
   server   Run the proxy server (exit node)
   client   Run the proxy client (local SOCKS5)
+  router   Run a persistent multi-destination LMXF SOCKS5 router
+  tun      Create a system TUN interface and route LMXF traffic automatically
   connect  Connects to the localhost ports of the server (Port forwarding)
   forward  Exposes a SOCKS5 proxy that only allows clients to connect to the specified localhost ports.
 

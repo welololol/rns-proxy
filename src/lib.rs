@@ -7,20 +7,21 @@
 //! [1 byte type][4 bytes session_id][2 bytes payload length][payload]
 //! ```
 
+pub mod address;
 pub mod cli;
 pub mod client;
+pub mod filter;
+pub mod forwarding;
 pub mod frame;
 pub mod mux;
 pub mod node;
 pub mod relay;
 pub mod server;
-pub mod forwarding;
-pub mod filter;
 
 // Re-export commonly used items so existing `use crate::*` still works.
 pub use frame::{decode_connect_payload, encode_connect_payload, Frame, FrameType};
 pub use node::{create_node, ProxyEvent};
-pub use relay::{relay_bidirectional_tcp};
+pub use relay::relay_bidirectional_tcp;
 
 use log::info;
 use rns_net::{DestHash, RnsNode};

@@ -9,8 +9,7 @@
 
 use std::fmt;
 
-
-use crate::frame::FrameDecodeState::{DecodingFailed,  MoreDataRequired};
+use crate::frame::FrameDecodeState::{DecodingFailed, MoreDataRequired};
 
 // ---------------------------------------------------------------------------
 // Frame types and constants
@@ -131,9 +130,7 @@ impl Frame {
 // CONNECT payload helpers
 // ---------------------------------------------------------------------------
 
-pub fn ad() {
-    
-} 
+pub fn ad() {}
 
 /// Build a CONNECT frame payload: `[1 byte host_len][host bytes][2 bytes port BE][1 bytes settings]`
 /// currently the byte setting only denotes udp but could be used for more in the future
@@ -145,7 +142,8 @@ pub fn encode_connect_payload(host: &str, port: u16, udp: bool) -> Vec<u8> {
     buf.extend_from_slice(h);
     buf.extend_from_slice(&port.to_be_bytes());
 
-    if udp { // setting byte could be used for more data later on but right now it's just for udp.
+    if udp {
+        // setting byte could be used for more data later on but right now it's just for udp.
         buf.extend_from_slice(&[0b10000000]);
     } else {
         buf.extend_from_slice(&[0b00000000]);
@@ -164,7 +162,11 @@ pub fn decode_connect_payload(data: &[u8]) -> Option<(String, u16, bool)> {
     }
     let host = String::from_utf8(data[1..1 + n].to_vec()).ok()?;
     let port = u16::from_be_bytes([data[1 + n], data[2 + n]]);
-    let udp = if (data[n + 3] & 0b10000000) == 0  {false} else { true };
+    let udp = if (data[n + 3] & 0b10000000) == 0 {
+        false
+    } else {
+        true
+    };
     Some((host, port, udp))
 }
 

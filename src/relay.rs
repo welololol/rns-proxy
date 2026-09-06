@@ -1,19 +1,18 @@
 //! Bidirectional TCP?UDP ↔ RNS relay — used by both client and server sessions.
 //!
-//! Dev Note 1, idk where to put this but the buffer could be smaller than 
+//! Dev Note 1, idk where to put this but the buffer could be smaller than
 
 use std::net::Ipv4Addr;
 use std::sync::Arc;
 
- 
-use fast_socks5::{new_udp_header, parse_udp_request};
 use fast_socks5::util::target_addr::ToTargetAddr;
+use fast_socks5::{new_udp_header, parse_udp_request};
 use log::{debug, warn};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::{Mutex, mpsc};
+use tokio::sync::{mpsc, Mutex};
 use udp_stream::UdpStream;
 
-use crate::filter::{FilterConfig, allowed_ip, filter_and_convert};
+use crate::filter::{allowed_ip, filter_and_convert, FilterConfig};
 use crate::forwarding::PortType;
 use crate::frame::{Frame, FrameType};
 use crate::mux::MuxHandle;
@@ -30,7 +29,6 @@ pub async fn relay_bidirectional_tcp(
     let (mut tcp_read, mut tcp_write) = stream.into_split();
     let mux_fwd = mux.clone();
 
-
     debug!("[{}] relay bidirectional tcp", sid);
 
     // TCP -> RNS
@@ -45,7 +43,6 @@ pub async fn relay_bidirectional_tcp(
                 Err(e) => {
                     debug!("[{}] TCP read error: {}", sid, e);
                     break;
-
                 }
             }
         }
@@ -63,7 +60,10 @@ pub async fn relay_bidirectional_tcp(
                     }
                 }
                 FrameType::Close => break,
-                FrameType::ConnectErr => {warn!("connection errored, should probably be handled by different code"); break},
+                FrameType::ConnectErr => {
+                    warn!("connection errored, should probably be handled by different code");
+                    break;
+                }
                 _ => {}
             }
         }
@@ -80,8 +80,6 @@ pub async fn relay_bidirectional_tcp(
     mux.drop_session(sid).await;
 }
 
-
-
 /// udp client side must be split off to due a lot of things
 
 pub async fn relay_bidirectional_udp_client_side(
@@ -91,7 +89,6 @@ pub async fn relay_bidirectional_udp_client_side(
     mux: MuxHandle,
     mut session_rx: mpsc::UnboundedReceiver<Frame>,
 ) {
-    
     let socket = Arc::new(socket);
     let socket1 = socket.clone();
 
@@ -115,19 +112,17 @@ pub async fn relay_bidirectional_udp_client_side(
     // you could probably do better than using a mutex cause it's only updated in one thread
     // and read in another, but I odn't know enough fancy rust stuff to actually do that.
 
-
     // UDP -> RNS
     let udp_to_rns = tokio::spawn(async move {
         let mut buf = [0u8; 4096];
         loop {
-             let stuff = socket.recv_from(&mut buf).await;
-             
-             match stuff {
-                Ok((0,_)) => { break},
-                Ok((n,addr)) => {
-                    
-                    
-                    let mut a =  client_local_port_1.lock().await; *a = Some(addr.port());
+            let stuff = socket.recv_from(&mut buf).await;
+
+            match stuff {
+                Ok((0, _)) => break,
+                Ok((n, addr)) => {
+                    let mut a = client_local_port_1.lock().await;
+                    *a = Some(addr.port());
 
                     mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec()).await;
                 }
@@ -143,39 +138,34 @@ pub async fn relay_bidirectional_udp_client_side(
     let rns_to_udp = tokio::spawn(async move {
         loop {
             if let Some(frame) = session_rx.recv().await {
-                
-                
                 match frame.frame_type {
                     FrameType::Data => {
-                       let a =  client_local_port_2.lock().await;
-                       let value = *a;
+                        let a = client_local_port_2.lock().await;
+                        let value = *a;
 
-                       if let Some(port) = value {
-                            
-                            if let Err(e) = socket1.send_to(&frame.payload, (Ipv4Addr::LOCALHOST,port)).await {
+                        if let Some(port) = value {
+                            if let Err(e) = socket1
+                                .send_to(&frame.payload, (Ipv4Addr::LOCALHOST, port))
+                                .await
+                            {
                                 warn!("[{}] UDP write error: {}", sid, e);
                                 break;
                             } else {
-                                                            };
-                           
-                       } else {
-                           warn!("UDP received but client side does not know of a port");
-                           // break // shouldn't break because this might not be the client's fault
-                           // maybe some random bot send a udp request to that port before the client
-                           // could do anything, so we just leave it open.
-                       }  
+                            };
+                        } else {
+                            warn!("UDP received but client side does not know of a port");
+                            // break // shouldn't break because this might not be the client's fault
+                            // maybe some random bot send a udp request to that port before the client
+                            // could do anything, so we just leave it open.
+                        }
                     }
-                    FrameType::Close => { break},
+                    FrameType::Close => break,
                     _ => {}
                 }
             } else {
-                
                 break;
-                
-             };
-            
+            };
         }
-        
     });
 
     let (mut tcp_read, mut _tcp_write) = tcp_stream.into_split();
@@ -186,9 +176,13 @@ pub async fn relay_bidirectional_udp_client_side(
                 Ok(0) => {
                     debug!("tcp connectioned associated with udp died {:?}", sid);
                     break;
-                },
+                }
                 Ok(n) => {
-                    warn!("client still sending tcp through udp port {:?} {:?}", sid, &buf[0..n])
+                    warn!(
+                        "client still sending tcp through udp port {:?} {:?}",
+                        sid,
+                        &buf[0..n]
+                    )
                 }
                 Err(e) => {
                     debug!("[{}] TCP read error: {}", sid, e);
@@ -220,21 +214,20 @@ pub async fn relay_bidirectional_udp_server_side(
     let config2 = config1.clone();
 
     let mux_fwd = mux.clone();
-    
 
     // UDP -> RNS
     let udp_to_rns = tokio::spawn(async move {
         let mut buf = [0u8; 4096];
         loop {
-             let stuff = socket.recv_from(&mut buf).await;
-             
-             match stuff {
-                Ok((0,_)) => { break},
-                Ok((n,addr)) => {
+            let stuff = socket.recv_from(&mut buf).await;
+
+            match stuff {
+                Ok((0, _)) => break,
+                Ok((n, addr)) => {
                     if allowed_ip(addr, &config1, PortType::Udp).await {
                         let mut packet = new_udp_header(addr).expect("cannot wrap udp packet");
                         packet.extend_from_slice(&buf[..n]);
-                        
+
                         mux_fwd.send(FrameType::Data, sid, packet.to_vec()).await;
                     } else {
                         warn!("packet came from illegal server location")
@@ -252,48 +245,40 @@ pub async fn relay_bidirectional_udp_server_side(
     let rns_to_udp = tokio::spawn(async move {
         loop {
             if let Some(frame) = session_rx.recv().await {
-                
-                
                 match frame.frame_type {
                     FrameType::Data => {
                         match parse_udp_request(&*frame.payload).await {
-                            Ok((_frag,addr,data)) => {
-                                
-
-                                if let Some(socket) = filter_and_convert(addr.clone(), Some(&config2), PortType::Udp).await {
-                                    
-                                    if let Err(e) = socket1.send_to(data,socket).await {
+                            Ok((_frag, addr, data)) => {
+                                if let Some(socket) =
+                                    filter_and_convert(addr.clone(), Some(&config2), PortType::Udp)
+                                        .await
+                                {
+                                    if let Err(e) = socket1.send_to(data, socket).await {
                                         warn!("[{}] UDP write error: {}", sid, e);
                                         break;
                                     } else {
-                                                                            }
+                                    }
                                 } else {
-                                    warn!("[{}] client attempted to send to illegal location {}",sid, addr)
+                                    warn!(
+                                        "[{}] client attempted to send to illegal location {}",
+                                        sid, addr
+                                    )
                                 }
-                        
                             }
                             Err(e) => {
                                 debug!("[{}] UDP read error: {}", sid, e);
-                                break
-
+                                break;
                             }
-                    
                         };
-
                     }
-                    FrameType::Close => { break},
+                    FrameType::Close => break,
                     _ => {}
                 }
             } else {
-                
                 break;
-                
-             };
-            
+            };
         }
-        
     });
-
 
     tokio::select! {
         _ = udp_to_rns => {},
@@ -304,25 +289,23 @@ pub async fn relay_bidirectional_udp_server_side(
     mux.drop_session(sid).await;
 }
 
-/// udp must still have an associated tcp connection to detect when the connection is over. 
+/// udp must still have an associated tcp connection to detect when the connection is over.
 /// this does not apply to the server (as in rns server) as it detects that the frame is being closed
 /// udp doesn't have a connetcion so the server cannot detect that the remote server the client is connecting
 /// to is offline per say.
-/// 
+///
 /// basically, the client can stop the udp connection either by the reticulum link breaking
 /// OR the process using the udp connection stops
 /// while the server only stops in the first scenario because the server cannot know if the remote
 /// server not responding is part of the protocol.
-
-
 
 pub async fn relay_forwarded_tcp(
     sid: u32,
     stream: tokio::net::TcpStream, // stream between local forwarded port and the port
     // of whatever application is connecting to it.
     mux: MuxHandle,
-    mut session_rx: mpsc::UnboundedReceiver<Frame>)
-{
+    mut session_rx: mpsc::UnboundedReceiver<Frame>,
+) {
     let (mut tcp_read, mut tcp_write) = stream.into_split();
     let mux_fwd = mux.clone();
 
@@ -335,13 +318,11 @@ pub async fn relay_forwarded_tcp(
             match tcp_read.read(&mut buf).await {
                 Ok(0) => break,
                 Ok(n) => {
-                    
                     mux_fwd.send(FrameType::Data, sid, buf[..n].to_vec()).await;
                 }
                 Err(e) => {
                     debug!("[{}] TCP read error: {}", sid, e);
                     break;
-
                 }
             }
         }
@@ -352,14 +333,16 @@ pub async fn relay_forwarded_tcp(
         while let Some(frame) = session_rx.recv().await {
             match frame.frame_type {
                 FrameType::Data => {
-                    
                     if let Err(e) = tcp_write.write_all(&frame.payload).await {
                         warn!("[{}] TCP write error: {}", sid, e);
                         break;
                     }
                 }
                 FrameType::Close => break,
-                FrameType::ConnectErr => {warn!("connection errored, should probably be handled by different code"); break},
+                FrameType::ConnectErr => {
+                    warn!("connection errored, should probably be handled by different code");
+                    break;
+                }
                 _ => {}
             }
         }
@@ -381,13 +364,13 @@ pub async fn relay_forwarded_udp(
     // of whatever application is connecting to it.
     mux: MuxHandle,
     mut session_rx: mpsc::UnboundedReceiver<Frame>,
-    server_port: u16)
-{
+    server_port: u16,
+) {
     let mux_fwd = mux.clone();
 
     let localhost_server_addr = (Ipv4Addr::LOCALHOST, server_port).to_target_addr().unwrap();
 
-    let (mut udp_read,mut udp_write) = tokio::io::split(stream);
+    let (mut udp_read, mut udp_write) = tokio::io::split(stream);
 
     // UDP -> RNS
     let tcp_to_rns = tokio::spawn(async move {
@@ -396,16 +379,15 @@ pub async fn relay_forwarded_udp(
             match udp_read.read(&mut buf).await {
                 Ok(0) => break,
                 Ok(n) => {
-                    
-                    let mut packet = new_udp_header(localhost_server_addr.clone() ).expect("cannot wrap udp packet");
+                    let mut packet = new_udp_header(localhost_server_addr.clone())
+                        .expect("cannot wrap udp packet");
                     packet.extend_from_slice(&buf[..n]);
-                    
+
                     mux_fwd.send(FrameType::Data, sid, packet.to_vec()).await;
                 }
                 Err(e) => {
                     debug!("[{}] TCP read error: {}", sid, e);
                     break;
-
                 }
             }
         }
@@ -416,23 +398,20 @@ pub async fn relay_forwarded_udp(
         while let Some(frame) = session_rx.recv().await {
             match frame.frame_type {
                 FrameType::Data => {
-                    
                     match parse_udp_request(&*frame.payload).await {
-                        Ok((_frag,_addr,data)) => {
+                        Ok((_frag, _addr, data)) => {
                             // let target  = addr.into_string_and_port();
-                
+
                             if let Err(e) = udp_write.write_all(data).await {
                                 warn!("[{}] UDP write error: {}", sid, e);
                                 break;
                             } else {
-                                                            }
+                            }
                         }
                         Err(e) => {
                             debug!("[{}] UDP read error: {}", sid, e);
-                            break
-
+                            break;
                         }
-            
                     };
                 }
                 FrameType::Close => break,
@@ -450,4 +429,3 @@ pub async fn relay_forwarded_udp(
     mux.send(FrameType::Close, sid, Vec::new()).await;
     mux.drop_session(sid).await;
 }
-

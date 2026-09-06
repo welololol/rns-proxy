@@ -1,27 +1,36 @@
-use std::net::{IpAddr::{self, V4, V6}, Ipv4Addr, SocketAddr};
+use std::net::{
+    IpAddr::{self, V4, V6},
+    Ipv4Addr, SocketAddr,
+};
 
 use fast_socks5::util::target_addr::TargetAddr;
 use log::warn;
 
-use crate::{filter::{AddressFilter::{Address, Localhost, Private}, PortFilterType::Single}, forwarding::PortType,  };
+use crate::{
+    filter::{
+        AddressFilter::{Address, Localhost, Private},
+        PortFilterType::Single,
+    },
+    forwarding::PortType,
+};
 
 ///! Socket Filter
-///! 
-///! This allows the server side client to restrict what ips are allowed. as well as what ports 
-///! 
+///!
+///! This allows the server side client to restrict what ips are allowed. as well as what ports
+///!
 ///! This allows for generals socksv5 proxying while for example disabling accessing the localhost or computer's private network or disabling all UDP.
 ///! but can also be used for more restrictive purposes like only allowing clients to connect to a certain localhost.
 ///!
 ///! # Filter list  
 ///! the filter list consists of a list of filters which can either be include or exclude
-///! with the top having the least prioty and more granular settings and the bottom having the most priorty. 
-///! 
+///! with the top having the least prioty and more granular settings and the bottom having the most priorty.
+///!
 ///! by defeault an addressj
-///! 
+///!
 ///! # examples
 ///! ## example 1, only allow dns requests
 ///!  All:53:udp Include
-///! ## example 2, allow connections only to a local IRC chat 
+///! ## example 2, allow connections only to a local IRC chat
 ///!  All:194 Include
 ///! ## example 3, generic sockets server that blocks udp, private and localhost except for a localhost web server
 ///!  All Include
@@ -29,7 +38,6 @@ use crate::{filter::{AddressFilter::{Address, Localhost, Private}, PortFilterTyp
 ///!  Localhost Exclude
 ///!  Localhost:80:tcp
 ///!
-
 
 pub trait FilterSocket {
     fn filter(&self, addr: &SocketAddr) -> bool;
@@ -40,7 +48,6 @@ pub enum FilterResult {
     Exclude,
     Include,
 } // filters can also do neither if they are not applicable.
- 
 
 #[derive(Clone)]
 pub enum AddressFilter {
@@ -62,7 +69,7 @@ impl FilterSocket for AddressFilter {
                 V4(addr) => addr == Ipv4Addr::LOCALHOST, // loopback may not technically be localhost
                 // in ipv4 cause it can be any of 16 million addressses.
                 V6(addr) => addr.is_loopback(),
-            }
+            },
         }
     }
 }
@@ -82,9 +89,7 @@ pub struct PortFilter {
 impl FilterSocket for PortFilter {
     fn filter(&self, addr: &SocketAddr) -> bool {
         match self.port_filter {
-            Single(checking_port) => {
-                addr.port() == checking_port
-            },
+            Single(checking_port) => addr.port() == checking_port,
             PortFilterType::All => true,
         }
     }
@@ -94,7 +99,7 @@ impl FilterSocket for PortFilter {
 pub struct Filter {
     pub address_filter: AddressFilter,
     pub port_filter: PortFilter,
-    pub filter_result: FilterResult, 
+    pub filter_result: FilterResult,
 }
 
 #[derive(Clone)]
@@ -107,30 +112,32 @@ pub struct FilterConfig {
 /// Unlikey but possible and filtering by everything wouldn't prevent this. as we perform filtering
 /// after having having resolved the real ip. Adding a "deny domainname" to FilterConfig may make sense
 /// to reduce the possible attack surface
-/// 
+///
 /// Something to keep in mind.
-
 
 pub async fn target_to_socket(addr: TargetAddr) -> Option<SocketAddr> {
     match addr.resolve_dns().await {
-        Ok(socket_packed) => { // idk why this function signature is like this.
+        Ok(socket_packed) => {
+            // idk why this function signature is like this.
             if let TargetAddr::Ip(socket) = socket_packed {
                 Some(socket)
             } else {
                 // this can never happen
                 warn!("this did happen");
-                return None; 
+                return None;
             }
         }
         Err(_) => {
             return None;
         }
-        
     }
 }
 
-
-pub async fn allowed_ip(socket_addr: SocketAddr, filter_config: &FilterConfig, port_type: PortType) -> bool {
+pub async fn allowed_ip(
+    socket_addr: SocketAddr,
+    filter_config: &FilterConfig,
+    port_type: PortType,
+) -> bool {
     let mut include = false; // by default we don't allow anything.
 
     for filter in &filter_config.filters {
@@ -140,10 +147,13 @@ pub async fn allowed_ip(socket_addr: SocketAddr, filter_config: &FilterConfig, p
                 | (&PortType::Udp, &PortType::Udp)
                 | (&PortType::TcpUdp, _)
         );
-        if type_matches && filter.address_filter.filter(&socket_addr) && filter.port_filter.filter(&socket_addr) {
+        if type_matches
+            && filter.address_filter.filter(&socket_addr)
+            && filter.port_filter.filter(&socket_addr)
+        {
             match filter.filter_result {
-                FilterResult::Exclude => {include = false}
-                FilterResult::Include => {include = true}
+                FilterResult::Exclude => include = false,
+                FilterResult::Include => include = true,
             }
         }
     }
@@ -159,24 +169,28 @@ pub async fn allowed_ip(socket_addr: SocketAddr, filter_config: &FilterConfig, p
 /// getting the real ip and then passing it back. This is prevent some sneaky stuff from happening.
 ///
 /// also we don't currently discriminate against tcp or udp. that's a todo for later
-pub async fn filter_and_convert(addr: TargetAddr, filter_config: Option<&FilterConfig>, port_type: PortType) -> Option<SocketAddr> {
+pub async fn filter_and_convert(
+    addr: TargetAddr,
+    filter_config: Option<&FilterConfig>,
+    port_type: PortType,
+) -> Option<SocketAddr> {
     let socket_addr = target_to_socket(addr).await?;
     if let Some(filter_config) = filter_config {
         if allowed_ip(socket_addr, filter_config, port_type).await {
-           return Some(socket_addr) 
+            return Some(socket_addr);
         } else {
-            return None
+            return None;
         }
-
     } else {
         Some(socket_addr)
     }
-    
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{allowed_ip, AddressFilter, Filter, FilterConfig, FilterResult, PortFilter, PortFilterType};
+    use super::{
+        allowed_ip, AddressFilter, Filter, FilterConfig, FilterResult, PortFilter, PortFilterType,
+    };
     use crate::forwarding::PortType;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 

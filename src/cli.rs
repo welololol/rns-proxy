@@ -34,26 +34,42 @@ pub enum Commands {
         #[arg(short, long, default_value = "127.0.0.1:1080")]
         listen: String,
     },
+    /// Persistent multi-destination LMXF router over one local SOCKS5 listener
+    Router {
+        /// Local SOCKS5 listen address
+        #[arg(short, long, default_value = "127.0.0.1:1080")]
+        listen: String,
+    },
+    /// Create a system TUN interface and route LMXF traffic automatically
+    Tun {
+        /// Local SOCKS5 listen address used internally by the TUN bridge
+        #[arg(short, long, default_value = "127.0.0.1:1080")]
+        listen: String,
+
+        /// TUN interface name
+        #[arg(long, default_value = "rns0")]
+        interface: String,
+    },
     /// Connects to localhost ports of the server (Port forwarding)
-    Connect  {
+    Connect {
         /// RNS destination hash (hex)
         #[arg(short, long)]
         destination: String,
 
         /// connects udp ports, can be specified as just the port number or as SERVER_PORT:CLIENT_PORT. Multiple of this flag can be specified
         #[arg(short, long, value_parser = port_parser)]
-        udp_port: Vec<(u16,u16)>,
+        udp_port: Vec<(u16, u16)>,
 
         /// connectcs tcp ports, can be specified as just the port number or as SERVER_PORT:CLIENT_PORT. Multiple of this flag can be specified
         #[arg(short, long, value_parser = port_parser)]
-        tcp_port: Vec<(u16,u16)>,
+        tcp_port: Vec<(u16, u16)>,
 
         /// shorthand for connecting to both udp and tcp, can be specified as just the port number or as SERVER_PORT:CLIENT_PORT. Multiple of this flag can be specified
         #[arg(short, long, value_parser = port_parser)]
-        both_port: Vec<(u16,u16)>, // both udp and tcp
+        both_port: Vec<(u16, u16)>, // both udp and tcp
     },
     /// Exposes a SOCKS5 proxy that only allows clients to connect to specified localhost ports.
-    Forward  {
+    Forward {
         #[arg(long, value_name = "PATH")]
         /// Path to the identity file for persistent server address.
         /// Defaults to ~/.reticulum/rns_proxy_identity
@@ -68,20 +84,18 @@ pub enum Commands {
         tcp_port: Vec<u16>,
 
         #[arg(short, long)]
-        /// allow connecting to localhost tcp and udp port for any client accessing this destination. Multiple of this flag can be specified 
-        both_port: Vec<u16>,    }
+        /// allow connecting to localhost tcp and udp port for any client accessing this destination. Multiple of this flag can be specified
+        both_port: Vec<u16>,
+    },
 }
 
-
-
-fn port_parser(s: &str) -> Result<(u16,u16),String> {
-    if let Ok((server_port,client_port)) = try_parse!(s,"{}:{}") {
-        return Ok((server_port,client_port));
+fn port_parser(s: &str) -> Result<(u16, u16), String> {
+    if let Ok((server_port, client_port)) = try_parse!(s, "{}:{}") {
+        return Ok((server_port, client_port));
     }
-    if let Ok(port) = try_parse!(s,"{}") {
-        return Ok((port,port));
+    if let Ok(port) = try_parse!(s, "{}") {
+        return Ok((port, port));
     }
-
 
     return Err("Invalid port input".into());
 }
