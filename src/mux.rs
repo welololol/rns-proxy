@@ -16,14 +16,14 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::{Mutex};
+use tokio::sync::Mutex;
 
 use log::{error, info, warn};
 use rns_core::constants::LINK_MDU;
-use rns_net::{LinkId,  RnsNode};
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender, unbounded_channel};
+use rns_net::{LinkId, RnsNode};
+use tokio::sync::mpsc::{self, channel, Receiver, Sender};
 
-use crate::frame::FrameDecodeState::{DecodingFailed,  MoreDataRequired};
+use crate::frame::FrameDecodeState::{DecodingFailed, MoreDataRequired};
 use crate::{Frame, FrameType};
 
 /// Context byte for our link data. We use CONTEXT_NONE (0x00) which routes
@@ -44,12 +44,35 @@ struct MuxInner {
     next_sid: Mutex<u32>,
     /// Reassembly buffer for incoming raw link data chunks.
     recv_buf: Mutex<Vec<u8>>,
-    data_sender_buf: Arc<UnboundedSender<Vec<u8>>>,
+    data_sender_buf: Arc<Sender<Vec<u8>>>,
 }
 
-// allows for sending things faster cause it's on a different thread and makes sure everything ends up in order.
-pub fn run_link_sender(node: Arc<RnsNode>, link_id: Arc<Mutex<Option<LinkId>>>) -> UnboundedSender<Vec<u8>> {
-    let (sender,mut receiver): (UnboundedSender<Vec<u8>>, UnboundedReceiver<Vec<u8>>) = unbounded_channel();
+/// allows for sending things faster cause it's on a different thread and makes sure everything ends up in order.
+///
+/// There's a very specific reason why the channel capactity is so low, it comes down to window size
+/// Let's say we are connecting to youtube and downloading a part of a video to watch
+/// With rns-proxy being used as an outproxy for youtube that then being tunneled through reticulum
+/// the issue arises that the end proxy can download from youtube faster than what we can
+/// tunnel through reticulum. We'll assume the reticulum link is in the 10kb/s range while
+/// our normal internet connection is in the 10mb/s range
+///
+/// Let's say the youtube request is 200kb of video data, followed by a query to the client
+/// asking it what part of the video it wants next. If we naively had a unbounded channel
+/// Then the all the video data would be downloaded instantly compared to the slow rns-link
+/// obviously it would take a long time for that video data to reach the other side, the problem
+/// is the tcpstream itself, because all youtube would see is that some ip address (the server here)
+/// has taken in 200kb of video data instantly, and then hasn't replied to the request, and so will
+/// disconnect the tcpstream. Normally youtube would instead see that we are just a slow
+/// downloading client and keep the connection alive, however because we would instantly
+/// put all the tcpstream into an internal buffer instead of keeping in its own buffer.
+///
+/// the solution here is to only read from the tcpstream when we are free to send a packet.
+/// that then means youtube will see a slow client that will eventually respond
+///  instead a fast client that doesn't for no apparent reason
+///
+/// the choice of a buffer size of 5 is arbitary, it just has to be a lowish number
+pub fn run_link_sender(node: Arc<RnsNode>, link_id: Arc<Mutex<Option<LinkId>>>) -> Sender<Vec<u8>> {
+    let (sender, mut receiver): (Sender<Vec<u8>>, Receiver<Vec<u8>>) = channel(5);
 
     tokio::spawn(async move {
         while let Some(data_frame) = receiver.recv().await {
@@ -62,21 +85,22 @@ pub fn run_link_sender(node: Arc<RnsNode>, link_id: Arc<Mutex<Option<LinkId>>>) 
             };
 
             for chunk in data_frame.chunks(LINK_MDU) {
-                if let Err(e) = node.send_on_link(active_link.0, chunk.to_vec(), DATA_CONTEXT) {
+                // println!("{:?}", chunk);
+                if let Err(e) = node
+                    .send_on_link(active_link.0, chunk.to_vec(), DATA_CONTEXT)
+                    .await
+                {
                     warn!("Failed to send link data: {:?}", e);
                     *link_id.lock().await = None;
                     break;
                 }
             }
-            
+            // println!("{}", receiver.len());
         }
     });
 
-
     return sender;
 }
-
-
 
 impl MuxHandle {
     /// Create a new multiplexer handle.
@@ -89,7 +113,7 @@ impl MuxHandle {
                 sessions: Mutex::new(HashMap::new()),
                 next_sid: Mutex::new(0),
                 recv_buf: Mutex::new(Vec::new()),
-                data_sender_buf: Arc::new(run_link_sender(node.clone(), link_id))
+                data_sender_buf: Arc::new(run_link_sender(node.clone(), link_id)),
             }),
         }
     }
@@ -147,15 +171,15 @@ impl MuxHandle {
     /// multiple different sids from sending at the same time and scrambling packets
     pub async fn send_frame(&self, frame: &Frame) {
         let encoded = frame.encode();
-        _=self.inner.data_sender_buf.send(encoded);
+        _ = self.inner.data_sender_buf.send(encoded).await;
         // pretty much should never error so we don't care.
-
     }
 
     /// Convenience: send a typed frame.
     pub async fn send(&self, frame_type: FrameType, session_id: u32, payload: Vec<u8>) {
         // info!("send frame");
-        self.send_frame(&Frame::new(frame_type, session_id, payload)).await;
+        self.send_frame(&Frame::new(frame_type, session_id, payload))
+            .await;
     }
 
     /// Dispatch an incoming frame to the appropriate session.
@@ -203,7 +227,7 @@ impl MuxHandle {
                         MoreDataRequired => {
                             // info!("more data required");
                             break;
-                           // just wait for next packet 
+                            // just wait for next packet
                         }
                         DecodingFailed => {
                             // A damaged or out-of-sync frame must not crash the
@@ -219,7 +243,7 @@ impl MuxHandle {
                             break;
                         }
                     }
-                },
+                }
             }
         }
 
