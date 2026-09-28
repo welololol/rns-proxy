@@ -1,7 +1,9 @@
 # rns-proxy
 
 > **Disclaimer:** This project is relatively new and may have security issues especially when run as a server, make sure to firewall your network
+>
 > This project may be incompatiable with older versions of itself as it is still being currently developed
+>
 > Also this projects uses Links as the base communication instead of Channels, meaning that if a link your path is at all lossy (like a lora connection), your tcpstream will be corrupted. I can't really don't anything about that until a decent rust port comes around that actually implements reticulum properly
 
 SOCKS5 proxy that tunnels TCP connections and UDP packets over the [Reticulum Network Stack](https://reticulum.network/). Route arbitrary TCP/UDP traffic through Reticulum's encrypted, delay-tolerant mesh network using the standard SOCKS5 protocol.
