@@ -2,6 +2,7 @@
 
 > **Disclaimer:** This project is relatively new and may have security issues especially when run as a server, make sure to firewall your network
 > This project may be incompatiable with older versions of itself as it is still being currently developed
+> Also this projects uses Links as the base communication instead of Channels, meaning that if a link your path is at all lossy (like a lora connection), your tcpstream will be corrupted. I can't really don't anything about that until a decent rust port comes around that actually implements reticulum properly
 
 SOCKS5 proxy that tunnels TCP connections and UDP packets over the [Reticulum Network Stack](https://reticulum.network/). Route arbitrary TCP/UDP traffic through Reticulum's encrypted, delay-tolerant mesh network using the standard SOCKS5 protocol.
 
@@ -59,7 +60,9 @@ The client handles automatic reconnection when the link or underlying transport 
 
 ### UDP
 
-Currently UDP is tunneled over the network using a link destination along with TCP, meaning that UDP is currently ordered and reliable unnecessarily which increases latency. This may be changed in the future.
+~~Currently UDP is tunneled over the network using a link destination along with TCP, meaning that UDP is currently ordered and reliable unnecessarily which increases latency. This may be changed in the future.~~
+
+They will be tunneled through the channel api at some point though, cause the link data stream can still fail with udp as udp packets can be split across multiple link packets
 
 ## Build
 
@@ -184,7 +187,7 @@ Options:
 
 ## Protocol
 
-Multiplexed frame format (wire-compatible with the [Python implementation](https://github.com/rsgrinko/reticulum-socks5-proxy)):
+Multiplexed frame format (wire-compatible with the [Python implementation](https://github.com/rsgrinko/reticulum-socks5-proxy)): (haven't actually tested this in a while, may no longer be the case)
 
 ```
 [1 byte type][4 bytes session_id][2 bytes payload_len][payload]
